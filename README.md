@@ -16,7 +16,7 @@ whole of what it touches.
 
 1. Install HLSW first. If you do not have it, see [Getting HLSW](#getting-hlsw)
    below.
-2. Download `hlswfix-1.5.0.zip` from the [releases page][releases]. Not the
+2. Download `hlswfix-1.5.1.zip` from the [releases page][releases]. Not the
    green **Code** button: that gives you the sources without the built files.
 3. Unpack it anywhere and close HLSW if it is running.
 4. Double click **`install.cmd`**.
@@ -205,7 +205,7 @@ Everything in `hlswfix.ini` is optional, including the file itself. The fix
 needs no configuration. The comments in the file explain each setting; three
 are worth repeating here.
 
-**`title_version`** is why the title bar says **HLSW v1.5.0**. The developers'
+**`title_version`** is why the title bar says **HLSW v1.5.1**. The developers'
 last release was 1.4.0.5 in 2011, and the new number says at a glance that this
 HLSW has the fix in it. Only the displayed string changes: HLSW builds that
 title from its own version resource, and the resource is untouched. Comment the
@@ -345,10 +345,17 @@ every packet as hex, which is the tool that ended the guessing.
 
 ## What was tested
 
-HLSW 1.4.0.5 on Windows 10, against Source servers, over several hours. Queries,
-the player and rules lists, and rcon all work, including the large SourceMod
-admin interface in `cfg\rcon_sourcemod.cfg`. GoldSrc uses the same query and the
-same challenge and should work the same way, but that was not measured.
+HLSW 1.4.0.5 on Windows 10, against seven servers at once over several hours.
+Queries, the player and rules lists, and rcon all work, including the large
+SourceMod admin interface in `cfg\rcon_sourcemod.cfg`.
+
+GoldSrc works too, and it is worth saying why that was not a given. Those
+servers answer `A2S_INFO` without demanding a challenge at all, so they never
+had the problem, but the fix still attaches one as soon as it has learned it
+from the rules exchange. A server that took those four extra bytes for rubbish
+would have gone silent as a result. Counted from the packet log against two
+Counter-Strike 1.6 servers: 29 of 29 and 15 of 15 challenged info queries
+answered. They simply ignore what they did not ask for.
 
 Anything that needed hlsw.net stays broken. The web lists and `GamersSearch`
 have nothing to talk to, so they stay empty and servers have to be entered by

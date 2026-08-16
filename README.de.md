@@ -17,7 +17,7 @@ und legt Dateien daneben, und mehr fasst er nicht an.
 
 1. Zuerst HLSW installieren. Falls du es nicht hast, siehe
    [HLSW beschaffen](#hlsw-beschaffen) weiter unten.
-2. `hlswfix-1.5.0.zip` von der [Releases-Seite][releases] laden. Nicht über den
+2. `hlswfix-1.5.1.zip` von der [Releases-Seite][releases] laden. Nicht über den
    grünen **Code**-Knopf: der gibt dir die Quellen ohne die gebauten Dateien.
 3. Irgendwohin entpacken und HLSW schließen, falls es läuft.
 4. Doppelklick auf **`install.cmd`**.
@@ -224,7 +224,7 @@ Alles in `hlswfix.ini` ist optional, die Datei selbst eingeschlossen. Der Fix
 braucht keine Konfiguration. Die Kommentare in der Datei erklären jede
 Einstellung, drei sind es wert, hier wiederholt zu werden.
 
-**`title_version`** ist der Grund, warum in der Titelzeile **HLSW v1.5.0**
+**`title_version`** ist der Grund, warum in der Titelzeile **HLSW v1.5.1**
 steht. Die letzte Version der Entwickler war 1.4.0.5 aus dem Jahr 2011, und die
 neue Nummer sagt auf einen Blick, dass in diesem HLSW der Fix steckt. Geändert
 wird nur die angezeigte Zeichenkette: HLSW baut den Titel aus seiner eigenen
@@ -373,11 +373,19 @@ ein Ende gemacht hat.
 
 ## Was getestet wurde
 
-HLSW 1.4.0.5 unter Windows 10, gegen Source-Server, über mehrere Stunden.
-Abfragen, Spieler- und Rules-Listen sowie rcon funktionieren, einschließlich
-der großen SourceMod-Administrationsoberfläche in `cfg\rcon_sourcemod.cfg`.
-GoldSrc benutzt dieselbe Abfrage und dieselbe Challenge und sollte genauso
-laufen, gemessen wurde das aber nicht.
+HLSW 1.4.0.5 unter Windows 10, gegen sieben Server gleichzeitig über mehrere
+Stunden. Abfragen, Spieler- und Rules-Listen sowie rcon funktionieren,
+einschließlich der großen SourceMod-Administrationsoberfläche in
+`cfg\rcon_sourcemod.cfg`.
+
+GoldSrc funktioniert ebenfalls, und es lohnt sich zu sagen, warum das nicht
+selbstverständlich war. Diese Server beantworten `A2S_INFO`, ohne überhaupt
+eine Challenge zu verlangen, sie hatten das Problem also nie. Der Fix hängt
+trotzdem eine an, sobald er sie aus der Rules-Abfrage kennt. Ein Server, der
+diese vier zusätzlichen Bytes für Müll hielte, wäre dadurch verstummt. Aus dem
+Paketmitschnitt gegen zwei Counter-Strike-1.6-Server ausgezählt: 29 von 29 und
+15 von 15 Info-Abfragen mit Challenge beantwortet. Sie ignorieren schlicht, was
+sie nicht angefordert haben.
 
 Alles, was hlsw.net brauchte, bleibt kaputt. Die Weblisten und `GamersSearch`
 haben niemanden mehr zum Reden, sie bleiben also leer und Server müssen von
