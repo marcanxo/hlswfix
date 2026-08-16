@@ -1,0 +1,14 @@
+# Build output. The release archive is assembled from build\ and both files in
+# it are reproducible from the sources next to this file.
+build/
+
+# Written by the shim and the launcher while HLSW runs.
+*.log
+
+# HLSW itself never belongs in here. It is not ours to redistribute in a git
+# tree, and it would drag twenty megabytes of somebody else's binaries into
+# every clone.
+hlsw.exe
+hlsw-real.exe
+*.msi
+*_setup.exe

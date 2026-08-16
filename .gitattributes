@@ -1,0 +1,8 @@
+# Normalised to LF in the repository. The files a user opens in an editor on
+# Windows, or that cmd.exe parses, are checked out with CRLF.
+* text=auto eol=lf
+
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+*.ini text eol=crlf
+*.md  text eol=crlf
