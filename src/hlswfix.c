@@ -447,19 +447,24 @@ static int WSAAPI my_sendto(SOCKET s, const char *buf, int len, int flags,
     if (!to || tolen < (int)sizeof(struct sockaddr_in) || to->sa_family != AF_INET)
         return real_sendto(s, buf, len, flags, to, tolen);
 
-    dump_packet("SENDTO ->", sin, buf, len);
-
+    /* Logged after the decision, not before, and labelled with what actually
+     * happened. Dumping the packet on the way in makes a query that was held
+     * back look exactly like one that went out, which turns the packet log
+     * into a source of wrong conclusions in the one situation it exists for. */
     switch (outgoing(s, sin, buf, len, query, 1)) {
     case SEND_SUPPRESS:
         /* Held back. The caller is told it went out, and gets the previous
          * answer instead of a fresh one. */
+        dump_packet("HELD   ->", sin, buf, len);
         return len;
     case SEND_CHALLENGE:
+        dump_packet("SENDTO ->", sin, query, sizeof(query));
         rc = real_sendto(s, query, sizeof(query), flags, to, tolen);
         /* Report the length the caller handed us, not the longer one that
          * actually went out, so its own accounting stays consistent. */
         return rc == (int)sizeof(query) ? len : rc;
     default:
+        dump_packet("SENDTO ->", sin, buf, len);
         return real_sendto(s, buf, len, flags, to, tolen);
     }
 }
@@ -473,11 +478,12 @@ static int WSAAPI my_send(SOCKET s, const char *buf, int len, int flags)
     if (!udp_peer_of(s, &peer))
         return real_send(s, buf, len, flags);
 
-    dump_packet("SEND ->", &peer, buf, len);
-
-    if (outgoing(s, &peer, buf, len, query, 0) != SEND_CHALLENGE)
+    if (outgoing(s, &peer, buf, len, query, 0) != SEND_CHALLENGE) {
+        dump_packet("SEND   ->", &peer, buf, len);
         return real_send(s, buf, len, flags);
+    }
 
+    dump_packet("SEND   ->", &peer, query, sizeof(query));
     rc = real_send(s, query, sizeof(query), flags);
     return rc == (int)sizeof(query) ? len : rc;
 }
