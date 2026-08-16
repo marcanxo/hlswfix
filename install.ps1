@@ -1,8 +1,10 @@
 # Sets up the takeover arrangement, and undoes it again.
 #
-# Only needed if you want HLSW to be fixed no matter how it is started. Simply
-# running hlswfix.exe out of the HLSW folder needs none of this and changes
-# nothing, and is the better choice if you are unsure.
+# This is the normal way to install the fix, and it is what install.cmd runs.
+# The alternative, for anyone who would rather nothing were renamed, is to put
+# hlswfix.exe, hlswfix.dll and hlswfix.ini in the HLSW folder by hand and start
+# hlswfix.exe instead of hlsw.exe. Same fix, no administrator rights, but
+# existing shortcuts keep starting the unfixed HLSW.
 #
 # What it sets up: hlsw.exe becomes hlsw-real.exe, and the launcher takes the
 # name hlsw.exe. Every shortcut, start menu entry and file association that
@@ -184,7 +186,7 @@ if (Test-RealHlsw $exe) {
 }
 
 if (-not (Test-Path $real)) {
-    throw "hlsw-real.exe is missing and hlsw.exe was not the real program either. There is nothing here to launch."
+    throw "hlsw-real.exe is missing and hlsw.exe was not the real program either. There is nothing here to launch. Reinstall HLSW, then run this again."
 }
 
 Copy-Item $payloadExe $exe -Force

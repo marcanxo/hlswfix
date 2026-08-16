@@ -5,7 +5,7 @@
  * one it is in by looking at what is on disk:
  *
  *   dropped in   Nothing was renamed. This program is hlswfix.exe and it
- *                starts hlsw.exe. Undoing it means deleting three files.
+ *                starts hlsw.exe. Undoing it means deleting the hlswfix files.
  *   taken over   The original was renamed to hlsw-real.exe and this program
  *                took the name hlsw.exe, so every shortcut and start menu
  *                entry that already exists starts HLSW fixed without knowing

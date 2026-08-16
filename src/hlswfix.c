@@ -79,8 +79,9 @@ static const char A2S_INFO[] =
 
 /* How often a single server may actually be asked for its info, in
  * milliseconds. HLSW polls the server it is watching as fast as the network
- * answers, which measured at roughly sixty five queries a second: it fires the
- * next A2S_INFO the moment the previous reply lands. Source servers answer at
+ * answers, which measured at sixty five to eighty queries a second depending
+ * on the server: it fires the next A2S_INFO the moment the previous reply
+ * lands. Source servers answer at
  * most sv_max_queries_sec, three per second by default, and drop everything
  * beyond that, so HLSW's own refresh rate is what makes the server it is
  * watching go silent. ServerAutoUpdateRate in the registry does not govern
