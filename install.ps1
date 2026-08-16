@@ -39,12 +39,40 @@ $payloadExe = Join-Path $payloadDir 'hlswfix.exe'
 $payloadDll = Join-Path $payloadDir 'hlswfix.dll'
 $payloadIni = Join-Path $PSScriptRoot 'hlswfix.ini'
 
+# HLSW is installed with Inno Setup, which leaves an uninstall key behind that
+# names the folder it went into. Reading it saves the user from having to find
+# that folder, and works wherever they unpacked this.
+function Find-HlswDir {
+    $keys = @(
+        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*',
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*'
+    )
+    foreach ($key in $keys) {
+        $found = Get-ItemProperty $key -ErrorAction SilentlyContinue |
+                 Where-Object { $_.DisplayName -match '^HLSW' }
+        foreach ($entry in $found) {
+            $d = $entry.InstallLocation
+            if (-not $d) { continue }
+            if ((Test-Path (Join-Path $d 'hlsw.exe')) -or (Test-Path (Join-Path $d 'hlsw-real.exe'))) {
+                return $d.TrimEnd('\')
+            }
+        }
+    }
+    return $null
+}
+
 if (-not $Dir) {
     if ((Test-Path (Join-Path $PSScriptRoot 'hlsw.exe')) -or
         (Test-Path (Join-Path $PSScriptRoot 'hlsw-real.exe'))) {
         $Dir = $PSScriptRoot
     } else {
-        throw "No HLSW next to this script. Say where it is: install.ps1 -Dir 'C:\Program Files (x86)\HLSW'"
+        $Dir = Find-HlswDir
+        if ($Dir) {
+            Write-Host "Found HLSW in $Dir"
+        } else {
+            throw "HLSW was not found. Install it first, or say where it is: install.ps1 -Dir 'C:\Program Files (x86)\HLSW'"
+        }
     }
 }
 $Dir = (Resolve-Path $Dir).Path

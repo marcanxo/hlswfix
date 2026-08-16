@@ -49,25 +49,30 @@ resource in `hlsw.exe` says 1.4.0.4. That is how the developers shipped it.
 
 ## Installing
 
-Install HLSW first, then unpack this next to it, into the folder that has
-`hlsw.exe` in it. Then pick one of two ways.
+Install HLSW first. Then unpack this archive anywhere and **double click
+`install.cmd`**. It finds your HLSW folder in the registry, copies two files
+into it, renames `hlsw.exe` to `hlsw-real.exe` and puts the launcher in its
+place, so every shortcut, start menu entry and file association that already
+exists starts HLSW with the fix in it, without knowing anything about the fix.
 
-**Just run it.** Start `hlswfix.exe` instead of `hlsw.exe`. Nothing is renamed,
-nothing is overwritten, and undoing it means deleting the three `hlswfix.*`
-files. If you are not sure, take this one.
+**`uninstall.cmd`** puts all of it back exactly as it was.
 
-**Or let it take over,** so that HLSW is fixed no matter how it is started:
+Run `install.cmd` again after an HLSW update. An update writes its own
+`hlsw.exe`, which undoes the arrangement and brings the timeouts back. The
+script looks at what `hlsw.exe` actually is rather than assuming, so running it
+twice is harmless.
 
-    powershell -ExecutionPolicy Bypass -File install.ps1
+There is no setup program, and that is on purpose. This thing injects a
+library into another process, which is exactly what you should want to be able
+to read before running. `install.cmd` is six lines and starts `install.ps1`,
+which is a text file. Nothing goes into Program Files, the registry or the
+start menu.
 
-That renames `hlsw.exe` to `hlsw-real.exe` and puts the launcher in its place,
-so every shortcut, start menu entry and file association that already exists
-keeps working and starts HLSW with the fix in it. Run it again after an HLSW
-update, because an update writes its own `hlsw.exe` and undoes the arrangement.
-
-    powershell -ExecutionPolicy Bypass -File install.ps1 -Uninstall
-
-puts everything back exactly as it was.
+If you would rather nothing at all be renamed, unpack `hlswfix.exe`,
+`hlswfix.dll` and `hlswfix.ini` into the HLSW folder yourself and start
+`hlswfix.exe` instead of `hlsw.exe`. It works the same way, only your existing
+shortcuts keep starting the unfixed HLSW. Undoing that means deleting three
+files.
 
 ## What was broken
 
