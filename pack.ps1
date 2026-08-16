@@ -23,7 +23,8 @@ $null = New-Item -ItemType Directory -Path $stage
 # the archive, so the download stays small enough to look at.
 Copy-Item (Join-Path $build 'hlswfix.exe') $stage
 Copy-Item (Join-Path $build 'hlswfix.dll') $stage
-foreach ($f in 'hlswfix.ini', 'install.cmd', 'uninstall.cmd', 'install.ps1', 'README.md', 'LICENSE') {
+foreach ($f in 'hlswfix.ini', 'install.cmd', 'uninstall.cmd', 'install.ps1',
+               'README.md', 'README.de.md', 'LICENSE') {
     Copy-Item (Join-Path $PSScriptRoot $f) $stage
 }
 

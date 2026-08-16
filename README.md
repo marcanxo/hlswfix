@@ -1,3 +1,5 @@
+**English** · [Deutsch](README.de.md)
+
 # hlswfix
 
 Brings HLSW back to life against modern game servers.
@@ -351,6 +353,16 @@ same challenge and should work the same way, but that was not measured.
 Anything that needed hlsw.net stays broken. The web lists and `GamersSearch`
 have nothing to talk to, so they stay empty and servers have to be entered by
 hand.
+
+## Translations
+
+HLSW came out of Germany and had a following well beyond it: it shipped
+language files for fifteen or so, and the servers it was pointed at were spread
+across as many. So translations are welcome.
+
+Copy `README.md`, name it `README.<code>.md` with the usual two letter code,
+translate it, and add yourself to the line of languages at the top of every
+`README*.md`. Keep the measurements and the file names as they are.
 
 ## License
 
