@@ -59,6 +59,12 @@ if (Get-Process hlsw, hlsw-real, hlswfix -ErrorAction SilentlyContinue) {
     throw "HLSW is running. Close it first."
 }
 
+# HLSW stores its version as "1, 4, 0, 4", so FileVersion reads back that way.
+function Get-Version([string]$path) {
+    $i = (Get-Item $path).VersionInfo
+    return "{0}.{1}.{2}.{3}" -f $i.FileMajorPart, $i.FileMinorPart, $i.FileBuildPart, $i.FilePrivatePart
+}
+
 function Test-RealHlsw([string]$path) {
     if (-not (Test-Path $path)) { return $false }
     $info = (Get-Item $path).VersionInfo
@@ -122,7 +128,7 @@ if ((Test-Path $payloadIni) -and -not (Test-Path $ini)) {
 if (Test-RealHlsw $exe) {
     # Either a first install, or an update has just written the real program
     # over the launcher. Either way it belongs under the other name.
-    $v = (Get-Item $exe).VersionInfo.FileVersion
+    $v = Get-Version $exe
     Write-Host "hlsw.exe is the real HLSW ($v), moving it to hlsw-real.exe"
     Move-Item $exe $real -Force
 } elseif (Test-Path $exe) {
@@ -138,7 +144,7 @@ Copy-Item $payloadExe $exe -Force
 Write-Host ""
 Write-Host "Done."
 Write-Host ("  hlsw.exe       launcher, {0:N0} bytes" -f (Get-Item $exe).Length)
-Write-Host ("  hlsw-real.exe  HLSW {0}, {1:N0} bytes" -f (Get-Item $real).VersionInfo.FileVersion, (Get-Item $real).Length)
+Write-Host ("  hlsw-real.exe  HLSW {0}, {1:N0} bytes" -f (Get-Version $real), (Get-Item $real).Length)
 Write-Host ("  hlswfix.dll    {0:N0} bytes" -f (Get-Item $dll).Length)
 Write-Host ""
 Write-Host "Start HLSW as usual. Undo all of it with: install.ps1 -Uninstall"
