@@ -146,10 +146,12 @@ timeout, because a real one still arrives every interval.
 Everything in `hlswfix.ini` is optional, including the file itself. The actual
 fix needs no configuration. See the comments in it for the rest.
 
-`title_version` rewrites the version HLSW shows in its title bar. HLSW builds
-that string from its own version resource, and this changes only what is
-displayed, so the program's files stay exactly as they were shipped and the
-change travels with this library rather than with a modified executable.
+`title_version` is why the title bar says **HLSW v1.5.0**. The developers'
+last release was 1.4.0.5 in 2011, and the new number says at a glance that this
+HLSW has the fix in it. Only the displayed string changes: HLSW builds that
+title from its own version resource, the resource is untouched, and the change
+travels with this library rather than with a modified executable. Comment the
+line out and the original version comes back.
 
 `rcon_redirect` sends the rcon connection for one server to a local port
 instead of straight at it, for when the rcon port is firewalled off and you
@@ -165,6 +167,14 @@ The launcher starts HLSW suspended, writes a path into it and calls
 shape of dll injection, it is exactly what antivirus software is trained to
 notice, and there is no way to do this job without it. The executables are also
 not code signed, so SmartScreen will call the publisher unknown.
+
+What you will actually see: Windows marks everything unpacked from a downloaded
+archive, so the first run of `install.cmd` may bring up a blue "Windows
+protected your PC" box. **More info**, then **Run anyway**. Right clicking the
+downloaded zip, **Properties**, **Unblock** before unpacking avoids it for every
+file at once. Windows Defender was run against the release archive and against
+each file in it and found nothing, but another scanner may still object to the
+injection on sight rather than on behaviour.
 
 Nothing here is hidden from you. It is about 1500 lines of C in [src](src),
 it builds in a few seconds, and building it yourself is the shortest way to be

@@ -71,7 +71,16 @@ if (-not $Dir) {
         if ($Dir) {
             Write-Host "Found HLSW in $Dir"
         } else {
-            throw "HLSW was not found. Install it first, or say where it is: install.ps1 -Dir 'C:\Program Files (x86)\HLSW'"
+            throw @"
+HLSW was not found on this computer.
+
+Install HLSW first. There has been no official download since the site went
+quiet, so the last release is mirrored here:
+https://github.com/marcanxo/hlswfix/releases
+
+If HLSW is installed but was not found, say where it is:
+  install.ps1 -Dir "C:\Program Files (x86)\HLSW"
+"@
         }
     }
 }
@@ -85,6 +94,17 @@ $log = Join-Path $Dir 'hlswfix.log'
 
 if (Get-Process hlsw, hlsw-real, hlswfix -ErrorAction SilentlyContinue) {
     throw "HLSW is running. Close it first."
+}
+
+# Writing into Program Files needs elevation, and what Windows says when it is
+# missing does not point anywhere useful. Find out before changing anything, so
+# nothing is left half done.
+$probe = Join-Path $Dir ("hlswfix-write-test-{0}.tmp" -f $PID)
+try {
+    New-Item -ItemType File -Path $probe -ErrorAction Stop | Out-Null
+    Remove-Item $probe -Force
+} catch {
+    throw "No permission to write to $Dir. Right click install.cmd and choose 'Run as administrator'."
 }
 
 # HLSW stores its version as "1, 4, 0, 4", so FileVersion reads back that way.
