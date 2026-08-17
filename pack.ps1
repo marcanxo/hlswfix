@@ -3,7 +3,7 @@
 #
 #   powershell -ExecutionPolicy Bypass -File pack.ps1 -Version 1.5.0
 
-param([string]$Version = '1.5.0')
+param([string]$Version = '1.6.1.0')
 
 $ErrorActionPreference = 'Stop'
 

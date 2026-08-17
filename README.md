@@ -16,7 +16,7 @@ whole of what it touches.
 
 1. Install HLSW first. If you do not have it, see [Getting HLSW](#getting-hlsw)
    below.
-2. Download `hlswfix-1.6.1.zip` from the [releases page][releases]. Not the
+2. Download `hlswfix-1.6.1.0.zip` from the [releases page][releases]. Not the
    green **Code** button: that gives you the sources without the built files.
 3. Unpack it anywhere and close HLSW if it is running.
 4. Double click **`install.cmd`**.
@@ -192,32 +192,44 @@ interval per server socket, which comes to the three a second a server will
 answer without dropping any. Measured on one server, that took the traffic from
 222 packets a second down to under 3.
 
-A held back query is **delayed, not dropped**. It is kept and put on the wire
-the moment its window opens, by a thread of the fix's own.
+The limit allows a run-up: six queries of a kind may go out back to back after a
+quiet spell, and only then does the rate apply. Selecting a server makes HLSW
+fire everything it knows at it at once, and each challenge that comes back earns
+another query straight away, so the opening exchange is six attempts inside a
+quarter of a second. A limit without an allowance turned exactly that into
+refusals, and the server you had just clicked was the one showing a timeout.
 
-That distinction is the whole design, and getting it wrong is what made servers
-show as timed out. HLSW asks again only once an answer has arrived, and while it
-believes a query is outstanding it sends nothing at all for about two seconds. A
-query that is quietly dropped therefore does not cost one refresh, it costs that
-entire deadline. Measured before this was fixed: every server the user was not
-currently looking at ran at one real query every 2.04 seconds with an answer
-outstanding for 2.03 of them, which HLSW paints as a timeout. In a rig that asks
-the way HLSW asks, dropping answered 4 queries out of 8, alternating a 2.5 second
-timeout with an answer that arrives instantly because it is the stale one from
-the previous window. Delaying answers 8 out of 8.
+**What HLSW is told about a held query decides what the ping column means**, and
+it is the one thing here worth understanding.
 
-The cost is the ping in the list. HLSW starts its stopwatch when it hands the
-query over, so a query delayed by most of a second is reported as most of a
-second. Both together are not possible, because HLSW times from its own call and
-asks again immediately. A wrong number in the ping column is a smaller lie than a
-server shown as unreachable when it is not. `query_interval_ms = 0` turns the
-pacing off entirely for anyone who would rather have honest pings.
+By default the send is **refused**, with the error that means "nothing went out,
+try again shortly". HLSW then knows no answer is coming, so it never sits waiting
+for one, and it times only queries that really went out: the ping column shows
+the true round trip, measured at 11 to 30 ms against seven servers. HLSW takes
+the refusal calmly, waiting one to three seconds before asking again.
 
-Two other designs were tried and are worse:
+`refuse_held_queries = 0` **delays** the query instead. It is reported as sent
+and really sent when its window opens, by a thread of the fix's own. Nothing is
+ever refused, so nothing ever flashes a timeout, but HLSW starts its stopwatch
+when it hands the query over, so the ping column then reads about one interval
+for every server.
+
+Getting this wrong the first time is what made servers show as timed out, and
+the reason is worth writing down. HLSW asks again only once an answer has
+arrived, and while it believes a query is outstanding it sends nothing at all
+for about two seconds. A query that is quietly **dropped** therefore does not
+cost one refresh, it costs that entire deadline. Measured before it was fixed:
+every server the user was not currently looking at ran at one real query every
+2.04 seconds with an answer outstanding for 2.03 of them, which HLSW paints as a
+timeout. In a rig that asks the way HLSW asks, dropping answered 4 queries out
+of 8, alternating a 2.5 second timeout with an answer that arrives instantly
+because it is the stale one from the previous window.
+
+Two further designs were tried and are worse:
 
 *Delaying the call itself* is not available. HLSW does its socket work on one
 thread with a blocking `recvfrom`, so any wait inside a hook stalls it. That is
-also why the delayed queries are sent from a separate thread: HLSW never calls
+also why delayed queries are sent from a separate thread: HLSW never calls
 `select` at all, so there is no call of its own to hang the work on at the one
 moment it matters, which is while it sits in `recvfrom` waiting.
 
@@ -226,17 +238,26 @@ the other direction, reporting 1 to 3 ms because that is genuinely how long a
 locally produced answer takes, and it makes HLSW spin: it asks again the instant
 it is answered, so an instant answer is an invitation to loop.
 
+**Known and left alone:** clicking through the server list can still flash a
+timeout on the server being selected. The allowance covers the ordinary opening
+exchange but not every shape of it. Nothing is wrong with the server, and it
+clears by itself within a couple of seconds.
+
 ## Settings
 
 Everything in `hlswfix.ini` is optional, including the file itself. The fix
 needs no configuration. The comments in the file explain each setting; three
 are worth repeating here.
 
-**`title_version`** is why the title bar says **HLSW v1.6.1**. The developers'
+**`title_version`** is why the title bar says **HLSW v1.6.1.0**. The developers'
 last release was 1.4.0.5 in 2011, and the new number says at a glance that this
-HLSW has the fix in it. Only the displayed string changes: HLSW builds that
-title from its own version resource, and the resource is untouched. Comment the
-line out and the original version comes back.
+HLSW has the fix in it. You do not have to set it: with the line left out, the
+version of the fix itself is shown, read from its own file, so it stays right
+after an update without anyone maintaining it. That matters because the
+installer never overwrites `hlswfix.ini`, on purpose, so a number written in
+there would go stale the moment you upgrade. Only the displayed string changes:
+HLSW builds that title from its own version resource, and the resource is
+untouched. `title_version =` with nothing after it puts HLSW's own version back.
 
 **`rcon_redirect`** sends the rcon connection for a server to a local port
 instead of straight at it, for when the rcon port is firewalled off and you

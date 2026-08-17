@@ -17,7 +17,7 @@ und legt Dateien daneben, und mehr fasst er nicht an.
 
 1. Zuerst HLSW installieren. Falls du es nicht hast, siehe
    [HLSW beschaffen](#hlsw-beschaffen) weiter unten.
-2. `hlswfix-1.6.1.zip` von der [Releases-Seite][releases] laden. Nicht über den
+2. `hlswfix-1.6.1.0.zip` von der [Releases-Seite][releases] laden. Nicht über den
    grünen **Code**-Knopf: der gibt dir die Quellen ohne die gebauten Dateien.
 3. Irgendwohin entpacken und HLSW schließen, falls es läuft.
 4. Doppelklick auf **`install.cmd`**.
@@ -214,31 +214,42 @@ pro Intervall pro Server-Socket, was zusammen genau die drei pro Sekunde
 ergibt, die ein Server beantwortet, ohne etwas zu verwerfen. An einem Server
 gemessen sank der Verkehr damit von 222 Paketen pro Sekunde auf unter 3.
 
-Eine zurückgehaltene Abfrage wird **verzögert, nicht verworfen**. Sie wird
-aufgehoben und in dem Moment auf die Leitung gelegt, in dem ihr Fenster aufgeht,
-von einem eigenen Thread des Fixes.
+Die Grenze erlaubt einen Anlauf: sechs Abfragen einer Art dürfen nach einer
+ruhigen Phase direkt hintereinander raus, erst danach greift die Rate. Beim
+Anwählen feuert HLSW alles, was es kennt, auf einmal ab, und auf jede
+zurückkommende Challenge folgt sofort die nächste Abfrage, das sind sechs
+Versuche in einer Viertelsekunde. Eine Grenze ohne Anlauf machte genau daraus
+Ablehnungen, und ausgerechnet der gerade angeklickte Server zeigte dann Timeout.
 
-Dieser Unterschied ist der ganze Entwurf, und ihn falsch zu treffen ist genau
-das, was Server als Timeout erscheinen ließ. HLSW fragt erst dann erneut, wenn
-eine Antwort angekommen ist, und solange es eine Abfrage für unterwegs hält,
-sendet es rund zwei Sekunden lang gar nichts. Eine still verworfene Abfrage
-kostet also nicht eine Aktualisierung, sondern diese ganze Frist. Vor der
-Korrektur gemessen: jeder Server, den man gerade **nicht** ansieht, lief mit
-einer echten Abfrage alle 2,04 Sekunden, davon 2,03 Sekunden mit einer offenen
-Antwort, auf die HLSW wartete. Auf einem Prüfstand, der so fragt wie HLSW,
-beantwortete das Verwerfen 4 von 8 Abfragen und wechselte dabei zwischen einem
-Timeout nach 2,5 Sekunden und einer Antwort, die sofort da ist, weil sie die
-alte aus dem vorigen Fenster ist. Mit Verzögern sind es 8 von 8.
+**Was HLSW über eine zurückgehaltene Abfrage erfährt, entscheidet, was die
+Ping-Spalte bedeutet**, und das ist das einzige hier, das man wissen sollte.
 
-Der Preis ist der angezeigte Ping. HLSW startet seine Stoppuhr beim Übergeben
-der Abfrage, eine um fast eine Sekunde verzögerte Abfrage wird deshalb als fast
-eine Sekunde gemeldet. Beides zusammen geht nicht, weil HLSW ab dem eigenen
-Aufruf misst und sofort erneut fragt. Eine falsche Zahl in der Ping-Spalte ist
-die kleinere Lüge als ein Server, der als nicht erreichbar dasteht, obwohl er
-läuft. Mit `query_interval_ms = 0` ist die Drosselung ganz aus, für alle, denen
-ehrliche Pings wichtiger sind.
+Standardmäßig wird das Senden **abgelehnt**, mit dem Fehler, der bedeutet "nichts
+ging raus, versuch es gleich nochmal". HLSW weiß dann, dass keine Antwort
+unterwegs ist, wartet also nie auf eine, und misst nur Abfragen, die wirklich
+rausgingen: in der Ping-Spalte steht der echte Rundlauf, gemessen 11 bis 30 ms
+über sieben Server. HLSW nimmt die Ablehnung gelassen und fragt nach ein bis
+drei Sekunden erneut.
 
-Zwei andere Ansätze wurden probiert und sind schlechter:
+Mit `refuse_held_queries = 0` wird die Abfrage stattdessen **verzögert**. Sie
+gilt als gesendet und geht wirklich raus, sobald ihr Fenster aufgeht, von einem
+eigenen Thread des Fixes. Dann wird nie etwas abgelehnt und nie ein Timeout
+aufblitzen, aber HLSW startet seine Stoppuhr beim Übergeben, und in der
+Ping-Spalte steht danach bei jedem Server ungefähr ein Intervall.
+
+Das beim ersten Mal falsch zu treffen ist genau das, was Server als Timeout
+erscheinen ließ, und der Grund gehört aufgeschrieben. HLSW fragt erst dann
+erneut, wenn eine Antwort angekommen ist, und solange es eine Abfrage für
+unterwegs hält, sendet es rund zwei Sekunden lang gar nichts. Eine still
+**verworfene** Abfrage kostet also nicht eine Aktualisierung, sondern diese ganze
+Frist. Vor der Korrektur gemessen: jeder Server, den man gerade nicht ansieht,
+lief mit einer echten Abfrage alle 2,04 Sekunden, davon 2,03 Sekunden mit einer
+offenen Antwort, auf die HLSW wartete. Auf einem Prüfstand, der so fragt wie
+HLSW, beantwortete das Verwerfen 4 von 8 Abfragen und wechselte dabei zwischen
+einem Timeout nach 2,5 Sekunden und einer Antwort, die sofort da ist, weil sie
+die alte aus dem vorigen Fenster ist.
+
+Zwei weitere Ansätze wurden probiert und sind schlechter:
 
 *Den Aufruf selbst verzögern* geht nicht. HLSW erledigt seine Socket-Arbeit auf
 einem Thread mit blockierendem `recvfrom`, jedes Warten in einem Hook hält ihn
@@ -252,18 +263,27 @@ andere Richtung und meldet 1 bis 3 ms, weil eine lokal erzeugte Antwort genau so
 lange braucht. Außerdem dreht HLSW dann hoch: es fragt sofort wieder, wenn es
 eine Antwort hat, eine sofortige Antwort ist also eine Einladung zur Schleife.
 
+**Bekannt und bewusst so gelassen:** beim Durchklicken der Serverliste kann bei
+dem gerade angewählten Server kurz ein Timeout aufblitzen. Der Anlauf deckt den
+üblichen Eröffnungsverkehr ab, aber nicht jede Form davon. Mit dem Server ist
+nichts, und nach ein, zwei Sekunden ist es von selbst weg.
+
 ## Einstellungen
 
 Alles in `hlswfix.ini` ist optional, die Datei selbst eingeschlossen. Der Fix
 braucht keine Konfiguration. Die Kommentare in der Datei erklären jede
 Einstellung, drei sind es wert, hier wiederholt zu werden.
 
-**`title_version`** ist der Grund, warum in der Titelzeile **HLSW v1.6.1**
+**`title_version`** ist der Grund, warum in der Titelzeile **HLSW v1.6.1.0**
 steht. Die letzte Version der Entwickler war 1.4.0.5 aus dem Jahr 2011, und die
-neue Nummer sagt auf einen Blick, dass in diesem HLSW der Fix steckt. Geändert
+neue Nummer sagt auf einen Blick, dass in diesem HLSW der Fix steckt. Setzen
+musst du sie nicht: ohne die Zeile wird die Version des Fixes selbst angezeigt,
+gelesen aus seiner eigenen Datei, und stimmt damit nach jedem Update von allein.
+Das ist wichtig, weil der Installer `hlswfix.ini` absichtlich nie überschreibt,
+eine dort eingetragene Nummer also mit dem nächsten Update veraltet. Geändert
 wird nur die angezeigte Zeichenkette: HLSW baut den Titel aus seiner eigenen
-Versionsressource, und die bleibt unberührt. Kommentiere die Zeile aus und die
-ursprüngliche Version ist zurück.
+Versionsressource, und die bleibt unberührt. `title_version =` ohne etwas
+dahinter stellt HLSWs eigene Version wieder her.
 
 **`rcon_redirect`** schickt die rcon-Verbindung für einen Server auf einen
 lokalen Port statt direkt zu ihm, für den Fall, dass der rcon-Port hinter einer

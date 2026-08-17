@@ -157,6 +157,29 @@ static const char A2S_INFO[] =
  * stopped understanding, forever. */
 #define INFO_MISS_LIMIT 3
 
+/* How many queries of one kind may go out back to back after a quiet spell,
+ * before the rate above applies again.
+ *
+ * A rate limit without an allowance was wrong for this program. Clicking a
+ * server in the list makes HLSW fire everything it knows at it at once, twenty
+ * packets inside five milliseconds, and a limit of one per second turns most of
+ * that into refusals. HLSW then waits out its deadline and the server you just
+ * clicked is the one showing a timeout. Measured at 17:24:20 in a packet log:
+ * the burst went out, the four queries behind it were refused, and nothing
+ * further happened for 1.7 seconds.
+ *
+ * Six, because three was measured to be too few. Selecting a server also starts
+ * a challenge exchange per query kind, and HLSW answers every challenge that
+ * arrives with a fresh query straight away: counted at 18:44:49 in a packet
+ * log, six attempts at A2S_PLAYER inside 250 milliseconds, of which three got
+ * through and three were refused.
+ *
+ * The average over any longer stretch is unchanged at one per interval, which
+ * is the number the server at the other end actually cares about. The allowance
+ * only lets them cluster, and it cannot accumulate beyond this: an idle spell
+ * of an hour still buys six, not three thousand. */
+#define QUERY_BURST 6
+
 /* ------------------------------------------------------------------ state */
 
 typedef struct {
@@ -177,7 +200,7 @@ typedef struct {
     /* Pacing, one slot per kind of query. A query that arrives too soon is not
      * thrown away but kept here and sent when its window opens, which is the
      * whole difference between pacing HLSW and blinding it. */
-    DWORD  last_sent[3];          /* when each kind last went out for real */
+    DWORD  next_ok[3];            /* earliest each kind may go out again */
     char   pending[3][MAX_QUERY]; /* the query waiting for its window */
     int    pending_len[3];
 } Entry;
@@ -210,18 +233,22 @@ static int             g_skip_login = 1;
 
 /* What HLSW is told about a query the pacing is holding back.
  *
- * 0, the default, reports it as sent and really sends it a fraction of a second
- * later. HLSW starts its stopwatch at the report, so the delay lands in the
- * ping it displays.
+ * 1, the default, reports that the send failed. HLSW then knows nothing is on
+ * its way, so it never sits waiting for an answer that cannot come, and
+ * whatever it sends next goes out at once and is timed honestly. That last part
+ * is the reason it won: the ping column shows the real round trip, 11 to 30 ms
+ * against these servers.
  *
- * 1 reports that the send failed and does not keep the query. HLSW then knows
- * nothing is on its way, so it cannot be waiting for an answer that will not
- * come, and whatever it sends next goes out at once and is timed honestly. It
- * is off by default because nobody knows how HLSW reacts to a refused send: it
- * might retry sensibly, it might retry in a tight loop, it might mark the
- * server as failed. The only way to find out is to try it, which is what the
- * switch is for. */
-static int             g_refuse_held;
+ * 0 reports it as sent and really sends it a fraction of a second later. HLSW
+ * starts its stopwatch at the report, so the delay lands in the ping, which
+ * then reads about one interval for every server.
+ *
+ * Both were measured against seven servers for a couple of hours. Refusing
+ * sends less, shows the truth, and HLSW takes it calmly: it waits between one
+ * and three seconds and asks again, rather than retrying hard as feared. Its
+ * one drawback is that selecting a server in the list can flash a timeout for
+ * it, because that is when HLSW fires the most at once. */
+static int             g_refuse_held = 1;
 
 /* On by default. A handful of servers answer one A2S_INFO twice, once in the
  * old GoldSrc format and once in the modern one. HLSW understands both and
@@ -327,6 +354,30 @@ static void dump_packet(const char *arrow, const struct sockaddr_in *addr,
 
 /* ---------------------------------------------------------------- helpers */
 
+/* The pacing itself, as a bucket that refills rather than a plain gap between
+ * two sends. next_ok is the time this kind of query may next go out; a query is
+ * let through while it is no more than a burst ahead of that, and each one that
+ * goes out pushes next_ok one interval further into the future.
+ *
+ * Written with signed differences on purpose. GetTickCount wraps every 49.7
+ * days, and comparing the values themselves rather than their difference is a
+ * bug that waits a month and a half to appear. Entries start with next_ok set
+ * to the current time, so the two are always close together and the difference
+ * is meaningful. */
+static int may_send_now(const Entry *e, int kind, DWORD now)
+{
+    LONG ahead = (LONG)(now - e->next_ok[kind]);
+
+    return ahead + (LONG)((QUERY_BURST - 1) * g_query_interval) >= 0;
+}
+
+static void note_sent(Entry *e, int kind, DWORD now)
+{
+    DWORD base = ((LONG)(now - e->next_ok[kind]) > 0) ? now : e->next_ok[kind];
+
+    e->next_ok[kind] = base + (DWORD)g_query_interval;
+}
+
 static int is_a2s_info(const char *buf, int len)
 {
     return len == A2S_INFO_LEN && memcmp(buf, A2S_INFO, A2S_INFO_LEN) == 0;
@@ -371,6 +422,12 @@ static Entry *entry_get(SOCKET s, const struct sockaddr_in *addr, int create)
     g_entries[oldest].ip = addr->sin_addr.s_addr;
     g_entries[oldest].port = addr->sin_port;
     g_entries[oldest].last_use = now;
+    /* Not left at zero. The pacing compares against these, and a zero here on a
+     * machine that has been up for weeks is a tick count far in the past, which
+     * the signed difference would read as a nonsense value. */
+    g_entries[oldest].next_ok[0] = now;
+    g_entries[oldest].next_ok[1] = now;
+    g_entries[oldest].next_ok[2] = now;
     return &g_entries[oldest];
 }
 
@@ -431,7 +488,7 @@ static int outgoing(SOCKET s, const struct sockaddr_in *peer,
         e = entry_get(s, peer, 1);
 
         if (can_suppress && g_query_interval > 0
-            && (now - e->last_sent[KIND_INFO]) < (DWORD)g_query_interval) {
+            && !may_send_now(e, KIND_INFO, now)) {
             /* Kept, not discarded. HLSW does not ask again while it believes an
              * answer is on its way, so a query thrown away here costs it a
              * whole deadline of silence rather than one refresh. */
@@ -458,7 +515,7 @@ static int outgoing(SOCKET s, const struct sockaddr_in *peer,
                 e->have_challenge = 0;
                 e->info_misses = 0;
             }
-            e->last_sent[KIND_INFO] = now;
+            note_sent(e, KIND_INFO, now);
             e->info_pending = 1;
             e->pending_len[KIND_INFO] = 0;
             /* Only a server that has actually refused a plain A2S_INFO gets one
@@ -493,18 +550,21 @@ static int outgoing(SOCKET s, const struct sockaddr_in *peer,
         EnterCriticalSection(&g_lock);
         e = entry_get(s, peer, 1);
         if (can_suppress && g_query_interval > 0
-            && (now - e->last_sent[idx]) < (DWORD)g_query_interval
-            && len <= MAX_QUERY) {
+            && !may_send_now(e, idx, now)) {
             /* Held the same way, and the claim on the next challenge is staked
              * when it actually goes out rather than now, so a claim cannot
-             * stand for a query that is still sitting here. */
+             * stand for a query that is still sitting here.
+             *
+             * The length test guards the copy, not the decision. Having it in
+             * the condition meant an oversized query skipped the pacing
+             * altogether and reset the clock while it was at it. */
             suppress = 1;
-            if (!g_refuse_held) {
+            if (!g_refuse_held && len <= MAX_QUERY) {
                 memcpy(e->pending[idx], buf, len);
                 e->pending_len[idx] = len;
             }
         } else {
-            e->last_sent[idx] = now;
+            note_sent(e, idx, now);
             e->pending_len[idx] = 0;
             if (seeks_challenge) {
                 e->client_wants_challenge = 1;
@@ -587,7 +647,7 @@ static void pump_deferred(void)
             const char *q = e->pending[k];
             int qlen = e->pending_len[k];
 
-            if (qlen <= 0 || (now - e->last_sent[k]) < (DWORD)g_query_interval)
+            if (qlen <= 0 || !may_send_now(e, k, now))
                 continue;
 
             memset(&ready[n].to, 0, sizeof(ready[n].to));
@@ -605,7 +665,7 @@ static void pump_deferred(void)
                                          && (UCHAR)q[7] == 0xFF && (UCHAR)q[8] == 0xFF);
 
             e->pending_len[k] = 0;
-            e->last_sent[k] = now;
+            note_sent(e, k, now);
             if (k == KIND_INFO)
                 e->info_pending = 1;
             if (ready[n].claims_challenge) {
@@ -656,7 +716,9 @@ static void start_pump(void)
 {
     HANDLE t;
 
-    if (g_query_interval <= 0)
+    /* Nothing is ever stored when held queries are refused instead of delayed,
+     * so the thread would wake forty times a second to find an empty table. */
+    if (g_query_interval <= 0 || g_refuse_held)
         return;
     if (InterlockedCompareExchange(&g_pump_started, 1, 0) != 0)
         return;
@@ -721,11 +783,17 @@ static int incoming(SOCKET s, const struct sockaddr_in *peer,
     e->have_challenge = 1;
     if (e->client_wants_challenge
         && (GetTickCount() - e->challenge_asked_at) < CHALLENGE_CLAIM_MS) {
-        /* HLSW asked for this one. Losing it would cost it the player list, so
-         * the client is always served first. The age check makes sure a claim
-         * whose answer never arrived cannot keep doing that indefinitely. */
+        /* HLSW asked for this one. It gets it either way, because the packet is
+         * handed over untouched; this only records that the claim is settled. */
         e->client_wants_challenge = 0;
-    } else if (e->info_pending) {
+    }
+
+    /* Deliberately not an else. The two are not rivals: the challenge value
+     * belongs to the address, not to one query, so the same packet can settle
+     * HLSW's claim and carry our repeated info query. Written as an else it
+     * meant that whenever HLSW happened to be waiting for a challenge at the
+     * same moment, our info query silently lost its round. */
+    if (e->info_pending) {
         /* This is the proof, and the only one there is: an A2S_INFO of ours
          * came back as a challenge, so this server really does demand one.
          * Until that has happened the query is sent plainly, because a server
@@ -938,7 +1006,7 @@ static int WSAAPI my_WSARecvFrom(SOCKET s, LPWSABUF bufs, DWORD count, LPDWORD r
 {
     char query[A2S_INFO_LEN + 4];
     struct sockaddr_in *sin;
-    int rc;
+    int rc, first;
 
     /* Overlapped calls complete later and somewhere else entirely, so there is
      * nothing to inspect here and nothing safe to do. */
@@ -950,14 +1018,19 @@ static int WSAAPI my_WSARecvFrom(SOCKET s, LPWSABUF bufs, DWORD count, LPDWORD r
         return rc;
 
     sin = (struct sockaddr_in *)from;
-    dump_packet("WSARECVFROM <-", sin, bufs[0].buf, (int)*recvd);
+    /* recvd is the total across every buffer handed in, while only the first is
+     * being looked at, so the smaller of the two is the length that is really
+     * there to read. Getting this wrong would read, and in one place write,
+     * past the end of a caller's buffer. */
+    first = (int)*recvd < (int)bufs[0].len ? (int)*recvd : (int)bufs[0].len;
+    dump_packet("WSARECVFROM <-", sin, bufs[0].buf, first);
 
-    if ((int)*recvd >= 9 && real_sendto
-        && incoming(s, sin, bufs[0].buf, (int)*recvd, query)) {
+    if (first >= 9 && real_sendto
+        && incoming(s, sin, bufs[0].buf, first, query)) {
         dbg_log("challenge from %s, repeating A2S_INFO", inet_ntoa(sin->sin_addr));
         real_sendto(s, query, sizeof(query), 0, from, sizeof(struct sockaddr_in));
     }
-    hide_duplicate_info(s, sin, bufs[0].buf, (int)*recvd);
+    hide_duplicate_info(s, sin, bufs[0].buf, first);
     return rc;
 }
 
@@ -967,7 +1040,7 @@ static int WSAAPI my_WSARecv(SOCKET s, LPWSABUF bufs, DWORD count, LPDWORD recvd
 {
     struct sockaddr_in peer;
     char query[A2S_INFO_LEN + 4];
-    int rc;
+    int rc, first;
 
     if (ov || routine || !bufs || count < 1 || !recvd || !udp_peer_of(s, &peer))
         return real_WSARecv(s, bufs, count, recvd, flags, ov, routine);
@@ -976,14 +1049,15 @@ static int WSAAPI my_WSARecv(SOCKET s, LPWSABUF bufs, DWORD count, LPDWORD recvd
     if (rc != 0)
         return rc;
 
-    dump_packet("WSARECV <-", &peer, bufs[0].buf, (int)*recvd);
+    first = (int)*recvd < (int)bufs[0].len ? (int)*recvd : (int)bufs[0].len;
+    dump_packet("WSARECV <-", &peer, bufs[0].buf, first);
 
-    if ((int)*recvd >= 9 && real_send
-        && incoming(s, &peer, bufs[0].buf, (int)*recvd, query)) {
+    if (first >= 9 && real_send
+        && incoming(s, &peer, bufs[0].buf, first, query)) {
         dbg_log("challenge from %s, repeating A2S_INFO", inet_ntoa(peer.sin_addr));
         real_send(s, query, sizeof(query), 0);
     }
-    hide_duplicate_info(s, &peer, bufs[0].buf, (int)*recvd);
+    hide_duplicate_info(s, &peer, bufs[0].buf, first);
     return rc;
 }
 
@@ -1526,23 +1600,30 @@ static void trim(char *s)
  * key to be present, and it cannot disagree with the numbers Explorer shows. */
 static void load_own_version(HMODULE self)
 {
-    char path[MAX_PATH], text[32];
+    char text[32];
+    HRSRC found;
+    HGLOBAL held;
     void *info;
-    DWORD size, handle = 0;
     VS_FIXEDFILEINFO *fixed = NULL;
     UINT len = 0;
 
-    if (!GetModuleFileNameA(self, path, MAX_PATH))
+    /* Read out of the image already mapped into this process, not through
+     * GetFileVersionInfo, which would open and map the file all over again.
+     * This runs from DllMain with the loader lock held, and asking the loader
+     * to do more work from in there is exactly the rule the pacing thread is
+     * started late to obey. FindResource and LockResource only walk memory that
+     * is mapped already and touch the loader not at all. */
+    found = FindResourceA(self, MAKEINTRESOURCEA(1), (LPCSTR)RT_VERSION);
+    if (!found)
         return;
-    size = GetFileVersionInfoSizeA(path, &handle);
-    if (!size)
+    held = LoadResource(self, found);
+    if (!held)
         return;
-    info = malloc(size);
+    info = LockResource(held);
     if (!info)
         return;
 
-    if (GetFileVersionInfoA(path, 0, size, info)
-        && VerQueryValueA(info, "\\", (LPVOID *)&fixed, &len)
+    if (VerQueryValueA(info, "\\", (LPVOID *)&fixed, &len)
         && fixed && len >= sizeof(*fixed)) {
         snprintf(text, sizeof(text), "%u.%u.%u.%u",
                  (unsigned)HIWORD(fixed->dwFileVersionMS),
@@ -1552,7 +1633,6 @@ static void load_own_version(HMODULE self)
         MultiByteToWideChar(CP_ACP, 0, text, -1, g_title_version,
                             sizeof(g_title_version) / sizeof(wchar_t));
     }
-    free(info);
 }
 
 static void load_config(HMODULE self)
