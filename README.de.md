@@ -224,18 +224,28 @@ Ablehnungen, und ausgerechnet der gerade angeklickte Server zeigte dann Timeout.
 **Was HLSW über eine zurückgehaltene Abfrage erfährt, entscheidet, was die
 Ping-Spalte bedeutet**, und das ist das einzige hier, das man wissen sollte.
 
-Standardmäßig wird das Senden **abgelehnt**, mit dem Fehler, der bedeutet "nichts
-ging raus, versuch es gleich nochmal". HLSW weiß dann, dass keine Antwort
-unterwegs ist, wartet also nie auf eine, und misst nur Abfragen, die wirklich
-rausgingen: in der Ping-Spalte steht der echte Rundlauf, gemessen 11 bis 30 ms
-über sieben Server. HLSW nimmt die Ablehnung gelassen und fragt nach ein bis
-drei Sekunden erneut.
+Standardmäßig wird die Abfrage **verzögert**: sie gilt als gesendet und geht
+wirklich raus, sobald ihr Fenster aufgeht, von einem eigenen Thread des Fixes.
+Es wird nie etwas abgelehnt und nichts sieht je falsch aus, aber HLSW startet
+seine Stoppuhr beim Übergeben, und in der Ping-Spalte steht deshalb ungefähr ein
+Intervall statt des echten Rundlaufs. Alles, was gar nicht gedrosselt wird, also
+jede Abfrage außerhalb von Source und GoldSrc, zeigt weiterhin seinen echten
+Ping.
 
-Mit `refuse_held_queries = 0` wird die Abfrage stattdessen **verzögert**. Sie
-gilt als gesendet und geht wirklich raus, sobald ihr Fenster aufgeht, von einem
-eigenen Thread des Fixes. Dann wird nie etwas abgelehnt und nie ein Timeout
-aufblitzen, aber HLSW startet seine Stoppuhr beim Übergeben, und in der
-Ping-Spalte steht danach bei jedem Server ungefähr ein Intervall.
+Mit `refuse_held_queries = 1` wird das Senden stattdessen **abgelehnt**, mit dem
+Fehler, der bedeutet "nichts ging raus, versuch es gleich nochmal". HLSW weiß
+dann, dass keine Antwort unterwegs ist, wartet nie auf eine, und misst nur
+Abfragen, die wirklich rausgingen: in der Ping-Spalte steht der echte Rundlauf,
+gemessen 11 bis 30 ms über sieben Server, und HLSW nimmt die Ablehnung gelassen
+und fragt nach ein bis drei Sekunden erneut.
+
+Das war eine Weile die Vorgabe und wurde zurückgenommen. HLSW schreibt jede
+abgelehnte Sendung in seine Statuszeile, als `ERROR in CHLSWSocket::SendTo:
+(10035) A non-blocking socket operation could not be completed immediately`, und
+färbt damit die Fußzeile rot, bei einem Programm, das einwandfrei arbeitet. Eine
+falsche Zahl in einer Spalte ist der kleinere Preis. Vorher wissen konnte das
+niemand: HLSWs Quelltext ist verloren, und der einzige Weg herauszufinden, wie es
+auf eine abgelehnte Sendung reagiert, war eine abzulehnen und zuzusehen.
 
 Das beim ersten Mal falsch zu treffen ist genau das, was Server als Timeout
 erscheinen ließ, und der Grund gehört aufgeschrieben. HLSW fragt erst dann

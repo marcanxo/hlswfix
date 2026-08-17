@@ -243,11 +243,20 @@ static int             g_skip_login = 1;
  * starts its stopwatch at the report, so the delay lands in the ping, which
  * then reads about one interval for every server.
  *
- * Both were measured against seven servers for a couple of hours. Refusing
- * sends less, shows the truth, and HLSW takes it calmly: it waits between one
- * and three seconds and asks again, rather than retrying hard as feared. Its
- * one drawback is that selecting a server in the list can flash a timeout for
- * it, because that is when HLSW fires the most at once. */
+ * Both were measured against seven servers over an evening. Refusing costs two
+ * things. HLSW writes every refused send into its status bar as
+ *
+ *   ERROR in CHLSWSocket::SendTo: (10035) A non-blocking socket operation
+ *   could not be completed immediately
+ *
+ * which fills the footer of a program that is working perfectly, and selecting
+ * a server in the list can briefly flash a timeout for it. Nobody could have
+ * known either in advance: HLSW's source is lost, and the only way to learn how
+ * it reacts to a refused send was to refuse one and watch.
+ *
+ * Refusing is the default anyway, because the ping is what a server browser is
+ * read for and a wrong one is a wrong answer, while a noisy footer is only
+ * untidy. Delaying is one line away for anyone who weighs that differently. */
 static int             g_refuse_held = 1;
 
 /* On by default. A handful of servers answer one A2S_INFO twice, once in the
@@ -479,6 +488,14 @@ static int outgoing(SOCKET s, const struct sockaddr_in *peer,
 {
     Entry *e;
     int have = 0;
+
+    /* Nothing here belongs to an address that is not a single real server.
+     * HLSW's LAN search broadcasts to 255.255.255.255 on port 0, which Windows
+     * rejects anyway, and letting that into the table would mean the pacing
+     * thread patiently retrying an impossible address once a second forever. */
+    if (peer->sin_port == 0 || peer->sin_addr.s_addr == INADDR_BROADCAST
+        || peer->sin_addr.s_addr == INADDR_ANY)
+        return SEND_AS_IS;
 
     if (is_a2s_info(buf, len)) {
         DWORD now = GetTickCount();
@@ -887,6 +904,17 @@ static int WSAAPI my_sendto(SOCKET s, const char *buf, int len, int flags,
         return len;
     }
 
+    /* Port zero is not a destination. HLSW's LAN search broadcasts to
+     * 255.255.255.255:0, Windows turns it down as it must, and HLSW writes
+     * "Addr invalid" into its status bar, which is the first thing a new user
+     * sees. The cause is removed rather than the message hidden: a datagram to
+     * port zero can never arrive, so not attempting it loses nothing at all and
+     * spares everyone the report of a failure that was certain. */
+    if (sin->sin_port == 0) {
+        dump_packet("DROPPED ->", sin, buf, len);
+        return len;
+    }
+
     /* Logged after the decision, not before, and labelled with what actually
      * happened. Dumping the packet on the way in makes a query that was held
      * back look exactly like one that went out, which turns the packet log
@@ -1069,6 +1097,35 @@ static BOOL WINAPI my_SetWindowTextW(HWND hwnd, LPCWSTR text)
 {
     wchar_t buf[512];
     const wchar_t *rest;
+
+    /* Sweep up after ourselves. Refusing a held query makes HLSW write a line
+     * into its status bar, and it turned out those lines travel through this
+     * very call, so the noise we cause can be caught where we cause it.
+     * Measured over a minute and a half: 443 of the 469 error lines in the
+     * footer were this one.
+     *
+     * Deliberately as narrow as it can be made. Only the exact message our own
+     * refusals produce is swallowed, only while refusing is switched on, and
+     * every other error HLSW has to report, including a genuine 10035 from
+     * anything but SendTo, goes through untouched. Hiding a program's errors is
+     * otherwise the wrong thing to do; this hides our own noise, not its news.
+     * At log level 2 the swallowed lines are written to the log, so nothing
+     * disappears without trace. */
+    if (g_refuse_held && text
+        && wcsstr(text, L"CHLSWSocket::SendTo") && wcsstr(text, L"(10035)")) {
+        if (g_logging >= 2) {
+            char shown[200];
+            int n = (int)wcslen(text);
+
+            if (n > 180)
+                n = 180;
+            n = WideCharToMultiByte(CP_ACP, 0, text, n, shown, sizeof(shown) - 1,
+                                    NULL, NULL);
+            shown[n > 0 ? n : 0] = 0;
+            dbg_log("swallowed our own noise: %s", shown);
+        }
+        return TRUE;
+    }
 
     if (!text || wcsncmp(text, L"HLSW v", 6) != 0)
         return real_SetWindowTextW(hwnd, text);
@@ -1796,17 +1853,24 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
     if (g_skip_login)
         turn_off_login_screen();
 
-    /* Cosmetic, and only when asked for. */
-    if (g_title_version[0]) {
+    /* Two unrelated jobs share this hook: rewriting the version in the title,
+     * and swallowing the status bar lines our own refusals cause. Either reason
+     * alone is enough to install it, which is why the condition is not simply
+     * whether a title version is set. */
+    if (g_title_version[0] || g_refuse_held) {
         char shown[32];
 
         real_SetWindowTextW = detour_in("USER32.dll", "SetWindowTextW",
                                         (void *)my_SetWindowTextW);
-        WideCharToMultiByte(CP_ACP, 0, g_title_version, -1, shown, sizeof(shown),
-                            NULL, NULL);
-        dbg_log("title bar will read HLSW v%s", shown);
+        if (g_title_version[0]) {
+            WideCharToMultiByte(CP_ACP, 0, g_title_version, -1, shown,
+                                sizeof(shown), NULL, NULL);
+            dbg_log("title bar will read HLSW v%s", shown);
+        } else {
+            dbg_log("title bar left as HLSW built it");
+        }
     } else {
-        dbg_log("title bar left as HLSW built it");
+        dbg_log("title bar left as HLSW built it, window text not hooked");
     }
 
     dbg_log("attached: recvfrom=%p sendto=%p recv=%p send=%p connect=%p, %d rcon redirect(s)",

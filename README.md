@@ -202,17 +202,28 @@ refusals, and the server you had just clicked was the one showing a timeout.
 **What HLSW is told about a held query decides what the ping column means**, and
 it is the one thing here worth understanding.
 
-By default the send is **refused**, with the error that means "nothing went out,
-try again shortly". HLSW then knows no answer is coming, so it never sits waiting
-for one, and it times only queries that really went out: the ping column shows
-the true round trip, measured at 11 to 30 ms against seven servers. HLSW takes
-the refusal calmly, waiting one to three seconds before asking again.
+**Refused** is the default. The send is turned down with the error that means
+"nothing went out, try again shortly", so HLSW knows no answer is coming, never
+sits waiting for one, and times only queries that really went out. The ping
+column then tells the truth: 11 to 30 ms against seven servers. HLSW takes the
+refusal calmly, waiting one to three seconds before asking again.
 
-`refuse_held_queries = 0` **delays** the query instead. It is reported as sent
-and really sent when its window opens, by a thread of the fix's own. Nothing is
-ever refused, so nothing ever flashes a timeout, but HLSW starts its stopwatch
-when it hands the query over, so the ping column then reads about one interval
-for every server.
+`refuse_held_queries = 0` **delays** the query instead: reported as sent, and
+really sent when its window opens, by a thread of the fix's own. Nothing is ever
+refused, but HLSW starts its stopwatch when it hands the query over, so the ping
+column then reads about one interval rather than the round trip.
+
+Refusing is not free, and both of its costs were found by trying it rather than
+by reasoning, because HLSW's source is lost and there was no other way to learn
+how it reacts. HLSW writes every refused send into its status bar as `ERROR in
+CHLSWSocket::SendTo: (10035) A non-blocking socket operation could not be
+completed immediately`, so the footer fills up on a program that is working
+perfectly, and selecting a server in the list can briefly flash a timeout for it.
+Neither breaks anything, and the ping is what a server browser is read for: a
+wrong ping is a wrong answer, a noisy footer is only untidy.
+
+Either way, whatever is not paced at all, meaning every query outside Source and
+GoldSrc, always shows its real ping.
 
 Getting this wrong the first time is what made servers show as timed out, and
 the reason is worth writing down. HLSW asks again only once an answer has
