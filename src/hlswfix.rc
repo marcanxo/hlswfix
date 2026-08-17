@@ -1,8 +1,13 @@
 /* Version information for both the launcher and the library.
  *
- * Two reasons this is here. It lets anyone who right clicks hlsw.exe and opens
- * the properties see what the file actually is, which matters when the file
- * sitting under HLSW's name is not HLSW. And it gives the executable a
+ * This is the one place the version is written down. The library reads its own
+ * resource at startup and shows that number in HLSW's title bar, so raising it
+ * here is the whole of releasing a new version. Four parts throughout, the way
+ * HLSW's own developers numbered their releases.
+ *
+ * Two more reasons it is here. It lets anyone who right clicks hlsw.exe and
+ * opens the properties see what the file actually is, which matters when the
+ * file sitting under HLSW's name is not HLSW. And it gives the executable a
  * resource section, without which BeginUpdateResource refuses to work and the
  * launcher cannot be given HLSW's icon at install time.
  *
@@ -22,8 +27,8 @@
 #endif
 
 1 VERSIONINFO
-FILEVERSION    1,6,0,0
-PRODUCTVERSION 1,6,0,0
+FILEVERSION    1,6,1,0
+PRODUCTVERSION 1,6,1,0
 FILEFLAGSMASK  VS_FFI_FILEFLAGSMASK
 FILEFLAGS      0
 FILEOS         VOS_NT_WINDOWS32
@@ -36,11 +41,11 @@ FILESUBTYPE    0
         {
             VALUE "CompanyName",      "marcanxo"
             VALUE "FileDescription",  DESCRIPTION_STRING
-            VALUE "FileVersion",      "1.6.0.0"
+            VALUE "FileVersion",      "1.6.1.0"
             VALUE "InternalName",     "hlswfix"
             VALUE "OriginalFilename", NAME_STRING
             VALUE "ProductName",      "hlswfix"
-            VALUE "ProductVersion",   "1.6.0"
+            VALUE "ProductVersion",   "1.6.1.0"
             VALUE "LegalCopyright",   "MIT licensed. Not connected with HLSW or its authors."
             VALUE "Comments",         "https://github.com/marcanxo/hlswfix"
         }

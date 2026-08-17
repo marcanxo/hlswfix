@@ -16,7 +16,7 @@ whole of what it touches.
 
 1. Install HLSW first. If you do not have it, see [Getting HLSW](#getting-hlsw)
    below.
-2. Download `hlswfix-1.6.0.zip` from the [releases page][releases]. Not the
+2. Download `hlswfix-1.6.1.zip` from the [releases page][releases]. Not the
    green **Code** button: that gives you the sources without the built files.
 3. Unpack it anywhere and close HLSW if it is running.
 4. Double click **`install.cmd`**.
@@ -153,9 +153,9 @@ Twelve functions are redirected inside the HLSW process, and no others:
 
 | redirected | why |
 |---|---|
-| `sendto` | Note that an `A2S_INFO` went out, pace it, and attach an already known challenge right away, so repeat queries cost one round trip and the ping stays honest instead of doubling. |
+| `sendto` | Note that an `A2S_INFO` went out, pace it, and attach a known challenge right away **to the servers that have shown they require one**, so repeat queries cost one round trip instead of two. |
 | `send` | The same, except that nothing is ever held back here. On a connected socket a dropped query would strand the reply. |
-| `recvfrom`, `recv`, `WSARecvFrom`, `WSARecv` | Catch the `0x41` that answers such a query, put the repeat on the wire as a side effect, and hand HLSW exactly what arrived. HLSW never learns anything happened. |
+| `recvfrom`, `recv`, `WSARecvFrom`, `WSARecv` | Catch the `0x41` that answers such a query, put the repeat on the wire as a side effect, and hand HLSW exactly what arrived. HLSW never learns anything happened. Also where a duplicate answer is made invisible, if `hide_duplicate_info` is on. |
 | `connect` | Only for the optional rcon redirect below. Stream sockets only, and it does nothing at all unless `rcon_redirect` is configured. |
 | `select` | Nothing but a control point: if it never fires, nothing is reaching the hooks. Always installed, changes no behaviour. |
 | `gethostbyname`, `getaddrinfo`, `WSAAsyncGetHostByName` | Refuse to look up hlsw.net and hlsw.org, so HLSW cannot report to servers that are no longer its own. See below. Not installed at all if `block_home_calls = 0`. |
@@ -192,19 +192,39 @@ interval per server socket, which comes to the three a second a server will
 answer without dropping any. Measured on one server, that took the traffic from
 222 packets a second down to under 3.
 
-A held back query is dropped, with nothing sent in its place. Two other designs
-were tried first and both were worse:
+A held back query is **delayed, not dropped**. It is kept and put on the wire
+the moment its window opens, by a thread of the fix's own.
 
-*Delaying the call* is not available at all. HLSW does its socket work on the
-thread that owns its window, so any wait inside a hook freezes the interface.
+That distinction is the whole design, and getting it wrong is what made servers
+show as timed out. HLSW asks again only once an answer has arrived, and while it
+believes a query is outstanding it sends nothing at all for about two seconds. A
+query that is quietly dropped therefore does not cost one refresh, it costs that
+entire deadline. Measured before this was fixed: every server the user was not
+currently looking at ran at one real query every 2.04 seconds with an answer
+outstanding for 2.03 of them, which HLSW paints as a timeout. In a rig that asks
+the way HLSW asks, dropping answered 4 queries out of 8, alternating a 2.5 second
+timeout with an answer that arrives instantly because it is the stale one from
+the previous window. Delaying answers 8 out of 8.
 
-*Answering the query locally*, from the previous reply, works but lies about
-the ping. HLSW times a query from its own send to the arrival of the answer, so
-a locally produced answer reports the time it took to produce it: every paced
-server showed 1 to 3 ms, while the one being watched, whose queries go out for
-real, showed its true 26. Dropping instead leaves the displayed ping as the
-last genuine measurement, and HLSW does not read the missing answers as a
-timeout, because a real one still arrives every interval.
+The cost is the ping in the list. HLSW starts its stopwatch when it hands the
+query over, so a query delayed by most of a second is reported as most of a
+second. Both together are not possible, because HLSW times from its own call and
+asks again immediately. A wrong number in the ping column is a smaller lie than a
+server shown as unreachable when it is not. `query_interval_ms = 0` turns the
+pacing off entirely for anyone who would rather have honest pings.
+
+Two other designs were tried and are worse:
+
+*Delaying the call itself* is not available. HLSW does its socket work on one
+thread with a blocking `recvfrom`, so any wait inside a hook stalls it. That is
+also why the delayed queries are sent from a separate thread: HLSW never calls
+`select` at all, so there is no call of its own to hang the work on at the one
+moment it matters, which is while it sits in `recvfrom` waiting.
+
+*Answering the query locally*, from the previous reply, lies about the ping in
+the other direction, reporting 1 to 3 ms because that is genuinely how long a
+locally produced answer takes, and it makes HLSW spin: it asks again the instant
+it is answered, so an instant answer is an invitation to loop.
 
 ## Settings
 
@@ -212,7 +232,7 @@ Everything in `hlswfix.ini` is optional, including the file itself. The fix
 needs no configuration. The comments in the file explain each setting; three
 are worth repeating here.
 
-**`title_version`** is why the title bar says **HLSW v1.6.0**. The developers'
+**`title_version`** is why the title bar says **HLSW v1.6.1**. The developers'
 last release was 1.4.0.5 in 2011, and the new number says at a glance that this
 HLSW has the fix in it. Only the displayed string changes: HLSW builds that
 title from its own version resource, and the resource is untouched. Comment the
@@ -233,8 +253,8 @@ rights and without a window, and is stopped again with HLSW. It does not have to
 be ssh. Treat `hlswfix.ini` like a startup entry: whoever can write it can run
 anything as you.
 
-**`block_home_calls`** and **`skip_login_screen`** are both on by default and
-both have a section of their own below.
+**`block_home_calls`**, **`skip_login_screen`** and **`hide_duplicate_info`** are
+all on by default and each has a section of its own below.
 
 **`log`** writes `hlswfix.log` next to `hlsw.exe`. Plain text, appended, never
 rotated. At `1` it names the servers involved, at `2` it holds the packets
@@ -326,6 +346,36 @@ settings dialog still shows the truth. Turning it back on inside HLSW lasts
 until the next start, because this is applied at every start; set
 `skip_login_screen = 0` if you want the screen back for good.
 
+## Servers that answer the same query twice
+
+A few servers answer a single `A2S_INFO` twice: once in the format GoldSrc used
+before the Source query protocol existed, and once in the modern one. Measured
+on one of them, on every query without exception, the old answer arrived after
+14 ms and the modern one after 15.
+
+The two disagree on exactly the fields HLSW reads the game and the version from.
+The old answer carries no application id and calls itself protocol 47; the
+modern one says 48. HLSW understands both and shows whichever landed last, so
+the game icon and the version string flip back and forth for as long as such a
+server is selected. This is the server's doing, not HLSW's: a plain socket that
+knows nothing about either sees the same two answers.
+
+`hide_duplicate_info`, on by default, makes the redundant old copy invisible to
+HLSW. Nothing about the delivery changes: the packet is still handed over, same
+length, same sender, same instant, and only its type byte becomes one the query
+protocol does not use, so HLSW recognises a query protocol packet and then finds
+nothing to do with it. Swallowing it and returning the next packet instead would
+mean waiting for one that might never arrive, and waiting inside a receive hook
+is what broke this once before.
+
+It only ever acts with proof in hand: the same server, on the same socket, must
+have answered in the modern format within the last ten seconds. So a server that
+speaks nothing but the old format is never touched, and one that stops sending
+the modern answer is fully visible again ten seconds later. The cost, when the
+modern answer is the one that gets lost on the way, is a single missed refresh,
+which is what a lost packet costs anyway. Set `hide_duplicate_info = 0` to see
+everything a server sends, exactly as it sends it.
+
 ## How the functions are redirected, and why not the import tables
 
 The obvious approach is to patch import tables, and it does not work here.
@@ -381,13 +431,45 @@ SourceMod admin interface in `cfg\rcon_sourcemod.cfg`.
 The calls home were measured with `log = 2` before and after, and blocking them
 changed nothing else: the game servers answered exactly as before.
 
-GoldSrc works too, and it is worth saying why that was not a given. Those
-servers answer `A2S_INFO` without demanding a challenge at all, so they never
-had the problem, but the fix still attaches one as soon as it has learned it
-from the rules exchange. A server that took those four extra bytes for rubbish
-would have gone silent as a result. Counted from the packet log against two
-Counter-Strike 1.6 servers: 29 of 29 and 15 of 15 challenged info queries
-answered. They simply ignore what they did not ask for.
+The pacing was checked against a 28 minute packet log of real traffic, and the
+log overturned what had been assumed about it. HLSW does not poll on a timer, it
+asks again the instant an answer arrives, and it sends nothing while it is
+waiting. Unthrottled it took the server it was watching to 50 queries a second
+and put 176 datagrams a second on the wire across seven servers, with five of
+them losing between 8 and 24 per cent of their answers. Throttled by dropping,
+every server that was not the one on screen ran at one query every 2.04 seconds
+with an answer outstanding for 2.03 of them, which HLSW paints as a timeout.
+That is what led to delaying queries instead of dropping them.
+
+`hide_duplicate_info` has a test of its own, because the server that prompted it
+stopped answering twice halfway through the afternoon and a test must not depend
+on a server's mood. Three fake servers on loopback cover the cases that matter:
+one that always answers twice, one that only ever speaks the old format and must
+never be touched, and one that stops sending the modern answer so the ten second
+window can be seen to expire and the old answer to come back.
+
+GoldSrc works too, and the way that was got wrong first is worth writing down,
+because it cost most of a day.
+
+Those servers answer `A2S_INFO` without demanding a challenge at all, so they
+never had the problem the fix exists for. The first version attached one anyway,
+as soon as it had learned a challenge from the players or rules exchange, and
+that looked safe: counted from a packet log against two Counter-Strike 1.6
+servers at the time, 29 of 29 and 15 of 15 challenged info queries were
+answered. They ignored what they had not asked for.
+
+Until one of them stopped ignoring it. The same server, later the same day,
+answered a plain 25 byte `A2S_INFO` four times out of four and a 29 byte one
+with a challenge appended zero times out of four. In HLSW it went completely
+silent and looked exactly like a network fault, and it was not: it was four
+bytes of ours on the end of a query it had understood perfectly well without
+them.
+
+So a challenge is now only ever appended to a server that has proved it wants
+one, and the only proof accepted is that this server answered a plain
+`A2S_INFO` of ours with `0x41`. On top of that, three challenged queries in a
+row with no answer at all drop the assumption and the next query goes out plain
+again, so a server that changes its mind is followed rather than argued with.
 
 Anything that needed hlsw.net stays broken. The web lists and `GamersSearch`
 have nothing to talk to, so they stay empty and servers have to be entered by

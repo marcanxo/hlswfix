@@ -17,7 +17,7 @@ und legt Dateien daneben, und mehr fasst er nicht an.
 
 1. Zuerst HLSW installieren. Falls du es nicht hast, siehe
    [HLSW beschaffen](#hlsw-beschaffen) weiter unten.
-2. `hlswfix-1.6.0.zip` von der [Releases-Seite][releases] laden. Nicht über den
+2. `hlswfix-1.6.1.zip` von der [Releases-Seite][releases] laden. Nicht über den
    grünen **Code**-Knopf: der gibt dir die Quellen ohne die gebauten Dateien.
 3. Irgendwohin entpacken und HLSW schließen, falls es läuft.
 4. Doppelklick auf **`install.cmd`**.
@@ -167,9 +167,9 @@ weiteren:
 
 | umgeleitet | wozu |
 |---|---|
-| `sendto` | Merken, dass ein `A2S_INFO` rausging, es drosseln, und eine bereits bekannte Challenge gleich anhängen, damit wiederholte Abfragen nur einen Rundlauf kosten und der angezeigte Ping ehrlich bleibt statt sich zu verdoppeln. |
+| `sendto` | Merken, dass ein `A2S_INFO` rausging, es drosseln, und eine bekannte Challenge gleich anhängen, aber **nur bei Servern, die gezeigt haben, dass sie eine verlangen**, damit wiederholte Abfragen einen statt zwei Rundläufe kosten. |
 | `send` | Dasselbe, nur wird hier nie etwas zurückgehalten. Auf einer verbundenen Socket würde eine verworfene Abfrage die Antwort stranden lassen. |
-| `recvfrom`, `recv`, `WSARecvFrom`, `WSARecv` | Das `0x41` abfangen, das auf so eine Abfrage antwortet, die Wiederholung nebenbei auf die Leitung legen, und HLSW genau das übergeben, was ankam. HLSW merkt nie, dass etwas passiert ist. |
+| `recvfrom`, `recv`, `WSARecvFrom`, `WSARecv` | Das `0x41` abfangen, das auf so eine Abfrage antwortet, die Wiederholung nebenbei auf die Leitung legen, und HLSW genau das übergeben, was ankam. HLSW merkt nie, dass etwas passiert ist. Hier wird auch eine doppelte Antwort unsichtbar gemacht, sofern `hide_duplicate_info` an ist. |
 | `connect` | Nur für die optionale rcon-Umleitung weiter unten. Ausschließlich Stream-Sockets, und ohne konfiguriertes `rcon_redirect` tut es gar nichts. |
 | `select` | Nichts als ein Kontrollpunkt: feuert er nie, erreicht auch nichts die Hooks. Immer installiert, ändert kein Verhalten. |
 | `gethostbyname`, `getaddrinfo`, `WSAAsyncGetHostByName` | Verweigern die Auflösung von hlsw.net und hlsw.org, damit HLSW sich nicht bei Servern meldet, die ihm nicht mehr gehören. Siehe unten. Werden bei `block_home_calls = 0` gar nicht erst installiert. |
@@ -192,6 +192,11 @@ während eine vom Fix verlorene Challenge nur einen zusätzlichen Rundlauf
 kostet. So ein Anspruch verfällt nach drei Sekunden, damit eine Antwort, die
 nie kommt, die Info-Abfrage nicht dauerhaft blockiert.
 
+Angehängt wird eine Challenge an `A2S_INFO` nur bei Servern, die **bewiesen**
+haben, dass sie eine wollen, und der einzige anerkannte Beweis ist, dass dieser
+Server eine blanke Abfrage von uns mit `0x41` beantwortet hat. Warum das so eng
+gefasst ist, steht weiter unten unter "Was getestet wurde".
+
 ## Drosselung der Abfragen
 
 HLSW fragt den Server, den es beobachtet, in dem Moment erneut, in dem die
@@ -209,21 +214,43 @@ pro Intervall pro Server-Socket, was zusammen genau die drei pro Sekunde
 ergibt, die ein Server beantwortet, ohne etwas zu verwerfen. An einem Server
 gemessen sank der Verkehr damit von 222 Paketen pro Sekunde auf unter 3.
 
-Eine zurückgehaltene Abfrage wird verworfen, ohne dass etwas an ihre Stelle
-tritt. Zwei andere Ansätze wurden vorher probiert und waren beide schlechter:
+Eine zurückgehaltene Abfrage wird **verzögert, nicht verworfen**. Sie wird
+aufgehoben und in dem Moment auf die Leitung gelegt, in dem ihr Fenster aufgeht,
+von einem eigenen Thread des Fixes.
 
-*Den Aufruf verzögern* geht überhaupt nicht. HLSW erledigt seine Socket-Arbeit
-auf dem Thread, dem sein Fenster gehört, jedes Warten in einem Hook friert also
-die Oberfläche ein.
+Dieser Unterschied ist der ganze Entwurf, und ihn falsch zu treffen ist genau
+das, was Server als Timeout erscheinen ließ. HLSW fragt erst dann erneut, wenn
+eine Antwort angekommen ist, und solange es eine Abfrage für unterwegs hält,
+sendet es rund zwei Sekunden lang gar nichts. Eine still verworfene Abfrage
+kostet also nicht eine Aktualisierung, sondern diese ganze Frist. Vor der
+Korrektur gemessen: jeder Server, den man gerade **nicht** ansieht, lief mit
+einer echten Abfrage alle 2,04 Sekunden, davon 2,03 Sekunden mit einer offenen
+Antwort, auf die HLSW wartete. Auf einem Prüfstand, der so fragt wie HLSW,
+beantwortete das Verwerfen 4 von 8 Abfragen und wechselte dabei zwischen einem
+Timeout nach 2,5 Sekunden und einer Antwort, die sofort da ist, weil sie die
+alte aus dem vorigen Fenster ist. Mit Verzögern sind es 8 von 8.
 
-*Die Abfrage lokal beantworten*, aus der vorigen Antwort, funktioniert, lügt
-aber beim Ping. HLSW misst eine Abfrage vom eigenen Absenden bis zum Eintreffen
-der Antwort, eine lokal erzeugte Antwort meldet also die Zeit, die ihre
-Erzeugung gedauert hat: jeder gedrosselte Server zeigte 1 bis 3 ms, während der
-gerade beobachtete, dessen Abfragen wirklich rausgehen, seine echten 26 zeigte.
-Verwerfen lässt den angezeigten Ping stattdessen auf der letzten echten Messung
-stehen, und HLSW liest die fehlenden Antworten nicht als Timeout, weil jedes
-Intervall eine echte ankommt.
+Der Preis ist der angezeigte Ping. HLSW startet seine Stoppuhr beim Übergeben
+der Abfrage, eine um fast eine Sekunde verzögerte Abfrage wird deshalb als fast
+eine Sekunde gemeldet. Beides zusammen geht nicht, weil HLSW ab dem eigenen
+Aufruf misst und sofort erneut fragt. Eine falsche Zahl in der Ping-Spalte ist
+die kleinere Lüge als ein Server, der als nicht erreichbar dasteht, obwohl er
+läuft. Mit `query_interval_ms = 0` ist die Drosselung ganz aus, für alle, denen
+ehrliche Pings wichtiger sind.
+
+Zwei andere Ansätze wurden probiert und sind schlechter:
+
+*Den Aufruf selbst verzögern* geht nicht. HLSW erledigt seine Socket-Arbeit auf
+einem Thread mit blockierendem `recvfrom`, jedes Warten in einem Hook hält ihn
+also an. Das ist auch der Grund, warum die verzögerten Abfragen von einem
+eigenen Thread kommen: HLSW ruft `select` überhaupt nie auf, es gibt also keinen
+eigenen Aufruf, an den man die Arbeit in dem einen Moment hängen könnte, auf den
+es ankommt, nämlich während HLSW im `recvfrom` wartet.
+
+*Die Abfrage lokal beantworten*, aus der vorigen Antwort, lügt beim Ping in die
+andere Richtung und meldet 1 bis 3 ms, weil eine lokal erzeugte Antwort genau so
+lange braucht. Außerdem dreht HLSW dann hoch: es fragt sofort wieder, wenn es
+eine Antwort hat, eine sofortige Antwort ist also eine Einladung zur Schleife.
 
 ## Einstellungen
 
@@ -231,7 +258,7 @@ Alles in `hlswfix.ini` ist optional, die Datei selbst eingeschlossen. Der Fix
 braucht keine Konfiguration. Die Kommentare in der Datei erklären jede
 Einstellung, drei sind es wert, hier wiederholt zu werden.
 
-**`title_version`** ist der Grund, warum in der Titelzeile **HLSW v1.6.0**
+**`title_version`** ist der Grund, warum in der Titelzeile **HLSW v1.6.1**
 steht. Die letzte Version der Entwickler war 1.4.0.5 aus dem Jahr 2011, und die
 neue Nummer sagt auf einen Blick, dass in diesem HLSW der Fix steckt. Geändert
 wird nur die angezeigte Zeichenkette: HLSW baut den Titel aus seiner eigenen
@@ -253,8 +280,9 @@ deinen Rechten und ohne Fenster, und mit HLSW wieder beendet. Es muss nicht ssh
 sein. Behandle `hlswfix.ini` deshalb wie einen Autostart-Eintrag: wer sie
 schreiben kann, kann als du alles ausführen.
 
-**`block_home_calls`** und **`skip_login_screen`** sind beide standardmäßig an
-und haben weiter unten einen eigenen Abschnitt.
+**`block_home_calls`**, **`skip_login_screen`** und **`hide_duplicate_info`**
+sind alle drei standardmäßig an und haben weiter unten je einen eigenen
+Abschnitt.
 
 **`log`** schreibt `hlswfix.log` neben `hlsw.exe`. Klartext, wird angehängt,
 nie rotiert. Bei `1` stehen die beteiligten Server drin, bei `2` die Pakete
@@ -352,6 +380,38 @@ Wahrheit. Innerhalb von HLSW wieder eingeschaltet hält es bis zum nächsten
 Start, weil dies bei jedem Start angewandt wird; setze `skip_login_screen = 0`,
 wenn du die Maske dauerhaft zurückwillst.
 
+## Server, die dieselbe Abfrage zweimal beantworten
+
+Ein paar Server beantworten ein einzelnes `A2S_INFO` zweimal: einmal in dem
+Format, das GoldSrc benutzte, bevor es das Source-Abfrageprotokoll gab, und
+einmal im modernen. Bei einem davon gemessen, bei jeder Abfrage ohne Ausnahme:
+die alte Antwort nach 14 ms, die moderne nach 15.
+
+Die beiden widersprechen sich in genau den Feldern, aus denen HLSW Spiel und
+Version liest. Die alte Antwort führt keine App-ID mit sich und nennt sich
+Protokoll 47, die moderne sagt 48. HLSW versteht beide und zeigt die zuletzt
+eingetroffene, deshalb springen Spielsymbol und Versionsangabe hin und her,
+solange so ein Server ausgewählt ist. Das macht der Server, nicht HLSW: ein
+blanker Socket, der von beiden nichts weiß, sieht dieselben zwei Antworten.
+
+`hide_duplicate_info`, standardmäßig an, macht die überflüssige alte Kopie für
+HLSW unsichtbar. An der Zustellung ändert sich nichts: das Paket wird weiterhin
+übergeben, gleiche Länge, gleicher Absender, gleicher Moment, und nur sein
+Typ-Byte wird zu einem, das es im Abfrageprotokoll nicht gibt. HLSW erkennt also
+weiterhin ein Paket dieses Protokolls und findet dann nichts damit anzufangen.
+Es zu schlucken und stattdessen das nächste zurückzugeben hieße, auf ein Paket
+zu warten, das vielleicht nie kommt, und Warten in einem Empfangs-Hook hat genau
+das hier schon einmal zerlegt.
+
+Es greift nur mit Beweis in der Hand: derselbe Server muss auf demselben Socket
+innerhalb der letzten zehn Sekunden im modernen Format geantwortet haben. Ein
+Server, der nur das alte Format spricht, wird deshalb nie angefasst, und einer,
+der die moderne Antwort einstellt, ist zehn Sekunden später wieder vollständig
+sichtbar. Der Preis, wenn ausgerechnet die moderne Antwort unterwegs verloren
+geht, ist eine ausgefallene Aktualisierung, und die kostet ein verlorenes Paket
+ohnehin. Mit `hide_duplicate_info = 0` siehst du alles, was ein Server schickt,
+genau so, wie er es schickt.
+
 ## Wie die Funktionen umgeleitet werden, und warum nicht über die Importtabellen
 
 Der naheliegende Weg wäre, die Importtabellen zu patchen, und der funktioniert
@@ -411,14 +471,48 @@ einschließlich der großen SourceMod-Administrationsoberfläche in
 Die Heimrufe wurden mit `log = 2` davor und danach gemessen, und ihre Sperre
 hat sonst nichts verändert: die Spielserver antworteten genau wie zuvor.
 
-GoldSrc funktioniert ebenfalls, und es lohnt sich zu sagen, warum das nicht
-selbstverständlich war. Diese Server beantworten `A2S_INFO`, ohne überhaupt
-eine Challenge zu verlangen, sie hatten das Problem also nie. Der Fix hängt
-trotzdem eine an, sobald er sie aus der Rules-Abfrage kennt. Ein Server, der
-diese vier zusätzlichen Bytes für Müll hielte, wäre dadurch verstummt. Aus dem
-Paketmitschnitt gegen zwei Counter-Strike-1.6-Server ausgezählt: 29 von 29 und
-15 von 15 Info-Abfragen mit Challenge beantwortet. Sie ignorieren schlicht, was
-sie nicht angefordert haben.
+Die Drosselung wurde an einem Paketmitschnitt über 28 Minuten geprüft, und der
+Mitschnitt hat umgeworfen, was vorher über sie angenommen wurde. HLSW fragt
+nicht nach einem Zeitgeber, sondern in dem Moment, in dem eine Antwort ankommt,
+und solange es wartet, sendet es nichts. Ungedrosselt brachte es den gerade
+angesehenen Server auf 50 Abfragen pro Sekunde und legte über sieben Server
+hinweg 176 Datagramme pro Sekunde auf die Leitung, wobei fünf davon zwischen 8
+und 24 Prozent ihrer Antworten verloren. Mit Drosselung durch Verwerfen lief
+jeder Server, der nicht gerade auf dem Schirm war, mit einer Abfrage alle 2,04
+Sekunden und einer offenen Antwort während 2,03 davon, was HLSW als Timeout
+anzeigt. Daraus wurde das Verzögern statt des Verwerfens.
+
+`hide_duplicate_info` hat einen eigenen Test, weil der Server, der dazu geführt
+hat, mitten am Nachmittag aufhörte, doppelt zu antworten, und ein Test nicht von
+der Laune eines Servers abhängen darf. Drei nachgebaute Server auf der lokalen
+Schleife decken die Fälle ab, auf die es ankommt: einer antwortet immer doppelt,
+einer spricht ausschließlich das alte Format und darf nie angefasst werden, und
+einer stellt die moderne Antwort ein, damit man das Zehn-Sekunden-Fenster
+ablaufen und die alte Antwort zurückkommen sieht.
+
+GoldSrc funktioniert ebenfalls, und wie das zuerst falsch gemacht wurde, ist
+das Aufschreiben wert, weil es fast einen ganzen Tag gekostet hat.
+
+Diese Server beantworten `A2S_INFO`, ohne überhaupt eine Challenge zu
+verlangen, sie hatten das Problem also nie, für das der Fix existiert. Die erste
+Fassung hängte trotzdem eine an, sobald sie eine aus der Spieler- oder
+Rules-Abfrage kannte, und das sah sicher aus: aus dem damaligen Paketmitschnitt
+gegen zwei Counter-Strike-1.6-Server ausgezählt, 29 von 29 und 15 von 15
+Info-Abfragen mit Challenge beantwortet. Sie ignorierten, was sie nicht
+angefordert hatten.
+
+Bis einer aufhörte, es zu ignorieren. Derselbe Server beantwortete später am
+selben Tag eine blanke Abfrage über 25 Bytes vier von vier Mal und eine über 29
+Bytes mit angehängter Challenge null von vier Mal. In HLSW verstummte er
+vollständig und sah aus wie ein Netzproblem, und das war es nicht: es waren vier
+Bytes von uns am Ende einer Abfrage, die er ohne sie bestens verstanden hatte.
+
+Deshalb wird eine Challenge jetzt nur noch an Server angehängt, die bewiesen
+haben, dass sie eine wollen, und der einzige anerkannte Beweis ist, dass dieser
+Server eine blanke `A2S_INFO` von uns mit `0x41` beantwortet hat. Dazu kommt ein
+Rückweg: bleiben drei Abfragen mit Challenge hintereinander ohne jede Antwort,
+wird die Annahme fallengelassen und die nächste geht wieder blank raus. Ein
+Server, der seine Meinung ändert, wird so verfolgt statt mit ihm gestritten.
 
 Alles, was hlsw.net brauchte, bleibt kaputt. Die Weblisten und `GamersSearch`
 haben niemanden mehr zum Reden, sie bleiben also leer und Server müssen von

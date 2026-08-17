@@ -61,6 +61,7 @@
 #include <tlhelp32.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* Room for a full length directory plus one of the file names appended to it,
@@ -75,6 +76,12 @@ static const char A2S_INFO[] =
 #define S2C_CHALLENGE   0x41
 #define A2S_INFO_REPLY  0x49
 
+/* The same answer in the format GoldSrc used before the Source query protocol
+ * existed. Some servers still send it, and a few send both for a single query.
+ * Measured on one of those: the old answer after 14 ms, the modern one after
+ * 15 ms, on every query without exception. */
+#define A2S_INFO_REPLY_OLD 0x6D
+
 #define MAX_ENTRIES   64
 
 /* How often a single server may actually be asked for its info, in
@@ -87,15 +94,28 @@ static const char A2S_INFO[] =
  * watching go silent. ServerAutoUpdateRate in the registry does not govern
  * this loop; setting it to 1 changed nothing.
  *
- * A query that is held back is simply dropped, with nothing sent in its place.
- * The obvious alternative, answering it from the previous reply, was tried and
- * lies about the ping: HLSW times a query from its own send to the arrival of
- * the answer, and a locally produced answer arrives in well under a
- * millisecond, so every paced server reported 1 to 3 ms while the one being
- * watched, whose queries go out for real, showed its true 26. Dropping leaves
- * the displayed ping as the last genuine measurement, and HLSW does not treat
- * the missing answers as a timeout, because a real one still arrives every
- * interval.
+ * A query that is held back is delayed, not dropped: it is kept and sent when
+ * its window opens, see pump_deferred. Dropping it was the first attempt and
+ * was wrong, because of the detail above. HLSW asks again the moment an answer
+ * arrives, and while it is waiting for one it sends nothing at all for about
+ * two seconds. A dropped query therefore does not cost one refresh, it costs
+ * that entire deadline, and every server the user was not looking at sat in
+ * that state permanently and was painted as timed out. Measured in a rig that
+ * asks the way HLSW asks: 4 answers out of 8 with the query dropped, alternating
+ * a 2.5 second timeout with an answer that arrives instantly because it is the
+ * stale one from the previous window. With the query delayed: 8 out of 8.
+ *
+ * The cost is the ping HLSW displays. It times a query from its own sendto to
+ * the arrival of the answer, so a query delayed by most of a second is reported
+ * as most of a second. Nothing avoids both: HLSW starts its own stopwatch and
+ * asks again immediately, so the choice is between a wrong number in the ping
+ * column and a server shown as unreachable when it is not.
+ *
+ * Answering the query locally instead, from the previous reply, was also tried.
+ * It lies about the ping in the other direction, reporting 1 to 3 ms because
+ * that is genuinely how long a locally produced answer takes, and it makes HLSW
+ * spin: it asks again the instant it is answered, so an instant answer is an
+ * invitation to loop.
  *
  * One second means three queries a second per server across the three kinds,
  * exactly what a Source server answers without dropping any: measured at that
@@ -111,6 +131,32 @@ static const char A2S_INFO[] =
  * query for good. */
 #define CHALLENGE_CLAIM_MS 3000
 
+/* How long a modern info reply counts as proof that a server sends both
+ * formats. Short on purpose. A server that stops sending the modern answer,
+ * because it was reconfigured or downgraded, has to become fully visible again
+ * quickly, and any server being watched at all is asked far more often than
+ * this, so the proof is renewed long before it lapses. */
+#define BOTH_FORMATS_MS 10000
+
+/* The three kinds of query that are paced, and the longest one of them: an
+ * A2S_INFO with a challenge appended comes to 29 bytes. */
+#define KIND_INFO   0
+#define KIND_PLAYER 1
+#define KIND_RULES  2
+#define MAX_QUERY   32
+
+/* How often the held back queries are looked at. Small enough that a query
+ * goes out close to the moment its window opens, large enough to be free. */
+#define PUMP_TICK_MS 25
+
+/* After this many info queries in a row with no answer at all, a server that we
+ * had been appending a challenge to is given the benefit of the doubt and asked
+ * plainly again. Servers do change their minds: one that answered the challenged
+ * form all afternoon stopped answering anything but the bare 25 byte query, and
+ * without this the fix would have kept talking to it in a language it had just
+ * stopped understanding, forever. */
+#define INFO_MISS_LIMIT 3
+
 /* ------------------------------------------------------------------ state */
 
 typedef struct {
@@ -120,14 +166,20 @@ typedef struct {
     USHORT port;                  /* network order */
     UCHAR  challenge[4];
     int    have_challenge;
+    int    info_needs_challenge;  /* proven, by this server refusing without one */
+    int    info_misses;           /* info queries in a row that went unanswered */
     int    info_pending;          /* an A2S_INFO of ours is unanswered */
     int    client_wants_challenge;/* HLSW asked for one itself */
     DWORD  challenge_asked_at;    /* so a claim that is never answered expires */
+    DWORD  last_modern_info;      /* when this server last answered 0x49 */
     DWORD  last_use;
 
-    /* Pacing: when each kind of query was last allowed out. */
-    DWORD  last_info_sent;
-    DWORD  last_aux_sent[2];      /* 0 = A2S_PLAYER, 1 = A2S_RULES */
+    /* Pacing, one slot per kind of query. A query that arrives too soon is not
+     * thrown away but kept here and sent when its window opens, which is the
+     * whole difference between pacing HLSW and blinding it. */
+    DWORD  last_sent[3];          /* when each kind last went out for real */
+    char   pending[3][MAX_QUERY]; /* the query waiting for its window */
+    int    pending_len[3];
 } Entry;
 
 typedef struct {
@@ -156,6 +208,29 @@ static int             g_block_home = 1;
  * answering years ago, and it is the first thing a fresh install shows. */
 static int             g_skip_login = 1;
 
+/* What HLSW is told about a query the pacing is holding back.
+ *
+ * 0, the default, reports it as sent and really sends it a fraction of a second
+ * later. HLSW starts its stopwatch at the report, so the delay lands in the
+ * ping it displays.
+ *
+ * 1 reports that the send failed and does not keep the query. HLSW then knows
+ * nothing is on its way, so it cannot be waiting for an answer that will not
+ * come, and whatever it sends next goes out at once and is timed honestly. It
+ * is off by default because nobody knows how HLSW reacts to a refused send: it
+ * might retry sensibly, it might retry in a tight loop, it might mark the
+ * server as failed. The only way to find out is to try it, which is what the
+ * switch is for. */
+static int             g_refuse_held;
+
+/* On by default. A handful of servers answer one A2S_INFO twice, once in the
+ * old GoldSrc format and once in the modern one. HLSW understands both and
+ * shows whichever landed last, and the two disagree on exactly the fields it
+ * reads from: the old answer carries no application id and reports protocol 47
+ * where the modern one reports 48. The result is a game icon and a version
+ * string that flip back and forth for as long as the server is selected. */
+static int             g_hide_duplicate_info = 1;
+
 #define MAX_HOME_IPS 8
 static ULONG           g_home_ips[MAX_HOME_IPS];
 static int             g_home_ip_count;
@@ -164,8 +239,11 @@ static int             g_home_ip_count;
  * needed by the send hook above it. */
 static int is_home_address(const struct sockaddr_in *a);
 
-/* Version to show in the window title instead of the built in one. Empty
- * leaves the title alone, and then the hook is not even installed. */
+/* Version to show in the window title instead of the built in one. Seeded from
+ * this library's own version resource, so it is correct after an update with
+ * nobody having to maintain it. hlswfix.ini can override it, and an override
+ * with nothing after the equals sign leaves HLSW's own title alone, in which
+ * case the hook is not even installed. */
 static wchar_t         g_title_version[32];
 static BOOL (WINAPI *real_SetWindowTextW)(HWND, LPCWSTR);
 
@@ -185,11 +263,13 @@ static int (WSAAPI *real_getaddrinfo)(const char *, const char *,
 static HANDLE (WSAAPI *real_WSAAsyncGetHostByName)(HWND, unsigned int, const char *,
                                                    char *, int);
 
-/* The overlapped capable receive pair. HLSW uses these for its steady state
- * monitoring, and plain recvfrom only for the burst of probes it sends when a
- * server is first added. Hooking only the plain one therefore works for about
- * a minute, until the cached challenge expires and the refresh arrives on a
- * path nothing is watching. */
+/* The overlapped capable receive pair, hooked for completeness rather than
+ * because HLSW needs it. An earlier note here claimed HLSW settles into these
+ * once it is monitoring; a 28 minute packet log says otherwise. Every one of
+ * the 55,000 lines in it is sendto or recvfrom, on a single thread, and there
+ * is not one WSARecvFrom, WSARecv, send, recv or connect among them. They stay
+ * hooked because another build or another path might use them and the cost is
+ * nothing, but nothing here depends on them. */
 static int (WSAAPI *real_WSARecvFrom)(SOCKET, LPWSABUF, DWORD, LPDWORD, LPDWORD,
                                       struct sockaddr *, LPINT, LPWSAOVERLAPPED,
                                       LPWSAOVERLAPPED_COMPLETION_ROUTINE);
@@ -331,10 +411,12 @@ static int udp_peer_of(SOCKET s, struct sockaddr_in *peer)
 
 /* Decides what to do with a query HLSW wants to send.
  *
- * can_suppress is false on connected sockets. Holding a query back there would
- * strand the reply: the wake up packet comes from loopback and a connected
- * socket accepts nothing but its peer, so HLSW would never be prompted to come
- * and collect it. */
+ * can_suppress is false on connected sockets, and stays that way. The old
+ * reason given here, that a held query would strand a wake up packet from
+ * loopback, belonged to an abandoned design and no longer means anything now
+ * that a held query is really sent a moment later. The honest reason is that
+ * HLSW never uses a connected socket for queries, so this path is untested in
+ * practice and is left alone rather than paced on a guess. */
 static int outgoing(SOCKET s, const struct sockaddr_in *peer,
                     const char *buf, int len, char *query, int can_suppress)
 {
@@ -349,12 +431,41 @@ static int outgoing(SOCKET s, const struct sockaddr_in *peer,
         e = entry_get(s, peer, 1);
 
         if (can_suppress && g_query_interval > 0
-            && (now - e->last_info_sent) < (DWORD)g_query_interval) {
+            && (now - e->last_sent[KIND_INFO]) < (DWORD)g_query_interval) {
+            /* Kept, not discarded. HLSW does not ask again while it believes an
+             * answer is on its way, so a query thrown away here costs it a
+             * whole deadline of silence rather than one refresh. */
             suppress = 1;
+            /* Not kept when the send is being refused: HLSW will send its own
+             * again, and holding a copy too would put the query out twice. */
+            if (!g_refuse_held) {
+                memcpy(e->pending[KIND_INFO], buf, A2S_INFO_LEN);
+                e->pending_len[KIND_INFO] = A2S_INFO_LEN;
+                if (e->have_challenge && e->info_needs_challenge) {
+                    memcpy(e->pending[KIND_INFO] + A2S_INFO_LEN, e->challenge, 4);
+                    e->pending_len[KIND_INFO] = A2S_INFO_LEN + 4;
+                }
+            }
         } else {
-            e->last_info_sent = now;
+            /* Nothing came back for the last one. Enough of those in a row and
+             * the assumption that this server wants a challenge on its info
+             * query is dropped, so the next one is asked plainly. */
+            if (e->info_pending && ++e->info_misses >= INFO_MISS_LIMIT) {
+                if (e->info_needs_challenge)
+                    dbg_log("%s stopped answering the challenged info query, asking plainly again",
+                            inet_ntoa(peer->sin_addr));
+                e->info_needs_challenge = 0;
+                e->have_challenge = 0;
+                e->info_misses = 0;
+            }
+            e->last_sent[KIND_INFO] = now;
             e->info_pending = 1;
-            have = e->have_challenge;
+            e->pending_len[KIND_INFO] = 0;
+            /* Only a server that has actually refused a plain A2S_INFO gets one
+             * appended. Sending it to a server that never asked is how a server
+             * that was perfectly happy goes silent: it is four bytes of rubbish
+             * on the end of a query it already understood. */
+            have = e->have_challenge && e->info_needs_challenge;
             if (have) {
                 memcpy(query, buf, A2S_INFO_LEN);
                 memcpy(query + A2S_INFO_LEN, e->challenge, 4);
@@ -373,7 +484,7 @@ static int outgoing(SOCKET s, const struct sockaddr_in *peer,
      * traffic. */
     if (is_connectionless(buf, len)
         && ((UCHAR)buf[4] == 0x55 || (UCHAR)buf[4] == 0x56)) {
-        int idx = ((UCHAR)buf[4] == 0x55) ? 0 : 1;
+        int idx = ((UCHAR)buf[4] == 0x55) ? KIND_PLAYER : KIND_RULES;
         DWORD now = GetTickCount();
         int suppress = 0;
         int seeks_challenge = (len >= 9 && (UCHAR)buf[5] == 0xFF && (UCHAR)buf[6] == 0xFF
@@ -382,10 +493,19 @@ static int outgoing(SOCKET s, const struct sockaddr_in *peer,
         EnterCriticalSection(&g_lock);
         e = entry_get(s, peer, 1);
         if (can_suppress && g_query_interval > 0
-            && (now - e->last_aux_sent[idx]) < (DWORD)g_query_interval) {
+            && (now - e->last_sent[idx]) < (DWORD)g_query_interval
+            && len <= MAX_QUERY) {
+            /* Held the same way, and the claim on the next challenge is staked
+             * when it actually goes out rather than now, so a claim cannot
+             * stand for a query that is still sitting here. */
             suppress = 1;
+            if (!g_refuse_held) {
+                memcpy(e->pending[idx], buf, len);
+                e->pending_len[idx] = len;
+            }
         } else {
-            e->last_aux_sent[idx] = now;
+            e->last_sent[idx] = now;
+            e->pending_len[idx] = 0;
             if (seeks_challenge) {
                 e->client_wants_challenge = 1;
                 e->challenge_asked_at = now;
@@ -419,6 +539,141 @@ static int outgoing(SOCKET s, const struct sockaddr_in *peer,
     return SEND_AS_IS;
 }
 
+/* Puts the held back queries on the wire once their window has opened.
+ *
+ * This exists because of how HLSW polls. It sends the next query the instant
+ * the previous answer arrives, and while it believes a query is outstanding it
+ * sends nothing at all and waits about two seconds for an answer. So a query
+ * that is quietly dropped does not cost one refresh, it costs that whole
+ * deadline, and every server the user is not currently looking at sat
+ * permanently in that state and was painted as timed out. Measured before this
+ * existed: one real query every 2.04 s per server, with an answer HLSW was
+ * waiting for outstanding for 2.03 s of it.
+ *
+ * The queries are therefore delayed rather than discarded. The rate on the wire
+ * is exactly the configured budget either way, but HLSW always gets its answer.
+ * The price is the ping it displays: it starts its own stopwatch when it calls
+ * sendto, so a query delayed by most of a second is reported as most of a
+ * second. There is no arrangement that avoids both, because HLSW times from its
+ * own call and asks again immediately, and a wrong number in the ping column is
+ * a smaller lie than a server shown as unreachable when it is not. */
+static void pump_deferred(void)
+{
+    struct {
+        SOCKET s;
+        struct sockaddr_in to;
+        char buf[MAX_QUERY];
+        int len;
+        int claims_challenge;
+    } ready[8];
+    int n = 0, i, k;
+    DWORD now;
+
+    if (!real_sendto || g_query_interval <= 0)
+        return;
+
+    /* Collected under the lock, sent outside it: sendto on a socket another
+     * thread is reading is fine, holding the lock across it is not. At most a
+     * handful per tick, and the tick is short, so nothing waits long and no
+     * entry can starve. */
+    now = GetTickCount();
+    EnterCriticalSection(&g_lock);
+    for (i = 0; i < MAX_ENTRIES && n < 8; i++) {
+        Entry *e = &g_entries[i];
+
+        if (!e->used)
+            continue;
+        for (k = 0; k < 3 && n < 8; k++) {
+            const char *q = e->pending[k];
+            int qlen = e->pending_len[k];
+
+            if (qlen <= 0 || (now - e->last_sent[k]) < (DWORD)g_query_interval)
+                continue;
+
+            memset(&ready[n].to, 0, sizeof(ready[n].to));
+            ready[n].to.sin_family = AF_INET;
+            ready[n].to.sin_addr.s_addr = e->ip;
+            ready[n].to.sin_port = e->port;
+            ready[n].s = e->sock;
+            memcpy(ready[n].buf, q, qlen);
+            ready[n].len = qlen;
+            /* Read back off the stored bytes rather than remembered: a players
+             * or rules query carrying the -1 placeholder is asking for a
+             * challenge, and only now is it really asking. */
+            ready[n].claims_challenge = (k != KIND_INFO && qlen >= 9
+                                         && (UCHAR)q[5] == 0xFF && (UCHAR)q[6] == 0xFF
+                                         && (UCHAR)q[7] == 0xFF && (UCHAR)q[8] == 0xFF);
+
+            e->pending_len[k] = 0;
+            e->last_sent[k] = now;
+            if (k == KIND_INFO)
+                e->info_pending = 1;
+            if (ready[n].claims_challenge) {
+                e->client_wants_challenge = 1;
+                e->challenge_asked_at = now;
+            }
+            n++;
+        }
+    }
+    LeaveCriticalSection(&g_lock);
+
+    for (i = 0; i < n; i++) {
+        dump_packet("LATE   ->", &ready[i].to, ready[i].buf, ready[i].len);
+        real_sendto(ready[i].s, ready[i].buf, ready[i].len, 0,
+                    (struct sockaddr *)&ready[i].to, sizeof(struct sockaddr_in));
+    }
+}
+
+/* A thread of our own, and not a matter of taste. HLSW does its socket work on
+ * one thread with a blocking recvfrom and never calls select at all, which the
+ * packet log settles: the select hook has been in place all along and has never
+ * once fired. So there is no call of HLSW's left to hang this on at the one
+ * moment it matters, namely when HLSW is sitting in recvfrom waiting for the
+ * answer to a query that is still held here.
+ *
+ * It runs for as long as the process does. Nothing unloads this library, the
+ * launcher injects it and never frees it, so there is no teardown to get wrong.
+ * The stop flag is there anyway, so that the loop has a real exit rather than
+ * one the compiler has to be told to ignore. */
+static volatile LONG g_pump_stop;
+
+static DWORD WINAPI pump_thread(LPVOID unused)
+{
+    (void)unused;
+
+    while (!g_pump_stop) {
+        Sleep(PUMP_TICK_MS);
+        pump_deferred();
+    }
+    return 0;
+}
+
+static LONG g_pump_started;
+
+/* Started on the first query rather than in DllMain, because creating a thread
+ * under the loader lock is a well known way to deadlock. */
+static void start_pump(void)
+{
+    HANDLE t;
+
+    if (g_query_interval <= 0)
+        return;
+    if (InterlockedCompareExchange(&g_pump_started, 1, 0) != 0)
+        return;
+
+    t = CreateThread(NULL, 0, pump_thread, NULL, 0, NULL);
+    if (t) {
+        CloseHandle(t);
+        dbg_log("pacing thread started, tick %d ms", PUMP_TICK_MS);
+    } else {
+        /* Nothing would ever send the held queries, so give the pacing up
+         * rather than leave HLSW waiting for answers that cannot come. */
+        g_query_interval = 0;
+        dbg_log("could not start the pacing thread, error %lu, pacing switched off",
+                GetLastError());
+    }
+}
+
 /* Returns 1 when what was just read is the challenge answering our own query.
  * The caller then has to repeat `query` and read again. */
 static int incoming(SOCKET s, const struct sockaddr_in *peer,
@@ -433,8 +688,28 @@ static int incoming(SOCKET s, const struct sockaddr_in *peer,
         if (e) {
             /* Any reply that is not a challenge settles what was pending. */
             e->client_wants_challenge = 0;
-            if ((UCHAR)buf[4] == A2S_INFO_REPLY)
+            /* The connectionless test is not decoration. A split answer starts
+             * FE FF FF FF, so its fifth byte is part of a request id and not a
+             * packet type at all: counted in one 28 minute log, 54 fragments
+             * carried 49 there by chance. Without this they would each be taken
+             * for an info reply, clearing info_pending so that a needed repeat
+             * is skipped, and stamping last_modern_info so that a server which
+             * only ever speaks the old format would have its one real answer
+             * hidden for the next ten seconds. */
+            if (is_connectionless(buf, rc) && (UCHAR)buf[4] == A2S_INFO_REPLY) {
                 e->info_pending = 0;
+                e->info_misses = 0;
+                /* Noted so that a duplicate in the old format can be
+                 * recognised as redundant rather than guessed at. */
+                e->last_modern_info = GetTickCount();
+            } else if (is_connectionless(buf, rc)
+                       && (UCHAR)buf[4] == A2S_INFO_REPLY_OLD) {
+                /* The old format answers the same query, so it settles it too,
+                 * and a server that speaks only that one must never be counted
+                 * as not answering. */
+                e->info_pending = 0;
+                e->info_misses = 0;
+            }
         }
         LeaveCriticalSection(&g_lock);
         return 0;
@@ -451,13 +726,79 @@ static int incoming(SOCKET s, const struct sockaddr_in *peer,
          * whose answer never arrived cannot keep doing that indefinitely. */
         e->client_wants_challenge = 0;
     } else if (e->info_pending) {
+        /* This is the proof, and the only one there is: an A2S_INFO of ours
+         * came back as a challenge, so this server really does demand one.
+         * Until that has happened the query is sent plainly, because a server
+         * that never asked for a challenge may well treat four extra bytes as
+         * rubbish and answer nothing at all. */
+        e->info_needs_challenge = 1;
         e->info_pending = 0;
+        e->info_misses = 0;
         repeat = 1;
         memcpy(query, A2S_INFO, A2S_INFO_LEN);
         memcpy(query + A2S_INFO_LEN, e->challenge, 4);
     }
     LeaveCriticalSection(&g_lock);
     return repeat;
+}
+
+/* Blanks out the second, redundant answer that a few servers send for a single
+ * A2S_INFO: the old GoldSrc format alongside the modern one, one millisecond
+ * apart. HLSW reads both and displays whichever arrived last, so the game icon
+ * and the version string flip back and forth several times a second for as long
+ * as such a server is selected.
+ *
+ * Nothing about the delivery changes. The packet is still handed to HLSW, same
+ * length, same sender, same instant; only the type byte becomes one the query
+ * protocol does not use, so HLSW still recognises a query protocol packet and
+ * then finds nothing to do with it. Leaving the four header bytes alone is the
+ * safer half of that choice: a packet that is no longer connectionless might
+ * reach code meant for a game connection, while an unknown type inside a
+ * connectionless packet can only be ignored, since that is what arrives from
+ * the open internet all day.
+ *
+ * That indirection is the whole point. Swallowing the packet and returning the
+ * next one instead would mean waiting for a packet that might never arrive, and
+ * blocking inside a receive hook is exactly what once broke HLSW's receive
+ * loop, so this does not go near it.
+ *
+ * It only ever fires with proof in hand: the same server, on the same socket,
+ * must have answered in the modern format within the last few seconds. A server
+ * that speaks nothing but the old format is therefore never touched, and one
+ * that stops sending the modern answer is fully visible again within
+ * BOTH_FORMATS_MS. The cost when the modern answer is the one that gets lost on
+ * the way is a single missed refresh, which is what a lost packet costs anyway.
+ *
+ * Called after incoming(), deliberately, so the challenge logic keeps seeing
+ * the bytes exactly as they came off the wire. */
+static void hide_duplicate_info(SOCKET s, const struct sockaddr_in *peer,
+                                char *buf, int rc)
+{
+    Entry *e;
+    int hide = 0;
+
+    /* 20 bytes is far below the 73 such an answer measured, and well above
+     * anything that could be a short packet of some other kind. */
+    if (!g_hide_duplicate_info || rc < 20 || !is_connectionless(buf, rc)
+        || (UCHAR)buf[4] != A2S_INFO_REPLY_OLD)
+        return;
+
+    EnterCriticalSection(&g_lock);
+    e = entry_get(s, peer, 0);
+    if (e && e->last_modern_info
+        && (GetTickCount() - e->last_modern_info) < BOTH_FORMATS_MS)
+        hide = 1;
+    LeaveCriticalSection(&g_lock);
+
+    if (!hide)
+        return;
+
+    buf[4] = 0;
+    /* Only at the packet level, because this fires on every refresh of such a
+     * server and would otherwise bury everything else in the log. */
+    if (g_logging >= 2)
+        dbg_log("%s answered twice, the old format copy was hidden",
+                inet_ntoa(peer->sin_addr));
 }
 
 static int WSAAPI my_sendto(SOCKET s, const char *buf, int len, int flags,
@@ -482,11 +823,20 @@ static int WSAAPI my_sendto(SOCKET s, const char *buf, int len, int flags,
      * happened. Dumping the packet on the way in makes a query that was held
      * back look exactly like one that went out, which turns the packet log
      * into a source of wrong conclusions in the one situation it exists for. */
+    start_pump();
+
     switch (outgoing(s, sin, buf, len, query, 1)) {
     case SEND_SUPPRESS:
-        /* Held back. The caller is told it went out, and gets the previous
-         * answer instead of a fresh one. */
-        dump_packet("HELD   ->", sin, buf, len);
+        if (g_refuse_held) {
+            /* Refused rather than delayed. WSAEWOULDBLOCK is the one error that
+             * says exactly this: nothing was sent, ask again in a moment. */
+            dump_packet("REFUSE ->", sin, buf, len);
+            WSASetLastError(WSAEWOULDBLOCK);
+            return SOCKET_ERROR;
+        }
+        /* Not sent yet. The caller is told it went out, which becomes true a
+         * fraction of a second later when the pacing thread sends it. */
+        dump_packet("DEFER  ->", sin, buf, len);
         return len;
     case SEND_CHALLENGE:
         dump_packet("SENDTO ->", sin, query, sizeof(query));
@@ -554,6 +904,7 @@ static int WSAAPI my_recvfrom(SOCKET s, char *buf, int len, int flags,
         dbg_log("challenge from %s, repeating A2S_INFO", inet_ntoa(sin->sin_addr));
         real_sendto(s, query, sizeof(query), 0, from, sizeof(struct sockaddr_in));
     }
+    hide_duplicate_info(s, sin, buf, rc);
     return rc;
 }
 
@@ -576,6 +927,7 @@ static int WSAAPI my_recv(SOCKET s, char *buf, int len, int flags)
         dbg_log("challenge from %s, repeating A2S_INFO", inet_ntoa(peer.sin_addr));
         real_send(s, query, sizeof(query), 0);
     }
+    hide_duplicate_info(s, &peer, buf, rc);
     return rc;
 }
 
@@ -605,6 +957,7 @@ static int WSAAPI my_WSARecvFrom(SOCKET s, LPWSABUF bufs, DWORD count, LPDWORD r
         dbg_log("challenge from %s, repeating A2S_INFO", inet_ntoa(sin->sin_addr));
         real_sendto(s, query, sizeof(query), 0, from, sizeof(struct sockaddr_in));
     }
+    hide_duplicate_info(s, sin, bufs[0].buf, (int)*recvd);
     return rc;
 }
 
@@ -630,6 +983,7 @@ static int WSAAPI my_WSARecv(SOCKET s, LPWSABUF bufs, DWORD count, LPDWORD recvd
         dbg_log("challenge from %s, repeating A2S_INFO", inet_ntoa(peer.sin_addr));
         real_send(s, query, sizeof(query), 0);
     }
+    hide_duplicate_info(s, &peer, bufs[0].buf, (int)*recvd);
     return rc;
 }
 
@@ -656,9 +1010,11 @@ static BOOL WINAPI my_SetWindowTextW(HWND hwnd, LPCWSTR text)
     return real_SetWindowTextW(hwnd, buf);
 }
 
-/* Purely a control point. If this never fires, the import patching is not
- * reaching the code that actually runs, and no amount of work on the query
- * logic will help. HLSW cannot poll its sockets without calling this. */
+/* Kept as a control point, but it turned out to prove the opposite of what it
+ * was put here for. The assumption was that HLSW cannot poll its sockets
+ * without calling select. It never calls it: across a 28 minute log this hook
+ * did not fire once. HLSW blocks in recvfrom instead, which is why the held
+ * back queries are sent from a thread of our own and not from here. */
 static int WSAAPI my_select(int nfds, fd_set *rd, fd_set *wr, fd_set *ex,
                             const struct timeval *tv)
 {
@@ -1156,11 +1512,55 @@ static void trim(char *s)
         *--p = 0;
 }
 
+/* Reads the version this library was built as out of its own resource, so the
+ * number in the title bar follows the build instead of a line in a file.
+ *
+ * That line used to carry it, and it was the wrong place. The installer never
+ * overwrites hlswfix.ini, on purpose, because it is the one file the user is
+ * meant to edit; so after an update the title still announced the version
+ * before it, and the number had to be remembered by hand at every release. Now
+ * there is one place it is written down, the version resource, and everything
+ * else follows from it.
+ *
+ * The fixed block is read rather than the string block: it needs no language
+ * key to be present, and it cannot disagree with the numbers Explorer shows. */
+static void load_own_version(HMODULE self)
+{
+    char path[MAX_PATH], text[32];
+    void *info;
+    DWORD size, handle = 0;
+    VS_FIXEDFILEINFO *fixed = NULL;
+    UINT len = 0;
+
+    if (!GetModuleFileNameA(self, path, MAX_PATH))
+        return;
+    size = GetFileVersionInfoSizeA(path, &handle);
+    if (!size)
+        return;
+    info = malloc(size);
+    if (!info)
+        return;
+
+    if (GetFileVersionInfoA(path, 0, size, info)
+        && VerQueryValueA(info, "\\", (LPVOID *)&fixed, &len)
+        && fixed && len >= sizeof(*fixed)) {
+        snprintf(text, sizeof(text), "%u.%u.%u.%u",
+                 (unsigned)HIWORD(fixed->dwFileVersionMS),
+                 (unsigned)LOWORD(fixed->dwFileVersionMS),
+                 (unsigned)HIWORD(fixed->dwFileVersionLS),
+                 (unsigned)LOWORD(fixed->dwFileVersionLS));
+        MultiByteToWideChar(CP_ACP, 0, text, -1, g_title_version,
+                            sizeof(g_title_version) / sizeof(wchar_t));
+    }
+    free(info);
+}
+
 static void load_config(HMODULE self)
 {
     char path[MAX_PATH], line[512], *p;
     FILE *fh;
     DWORD n;
+    int first_line = 1;
 
     n = GetModuleFileNameA(self, path, MAX_PATH);
     if (!n)
@@ -1181,6 +1581,15 @@ static void load_config(HMODULE self)
         unsigned int from_port, to_port;
 
         p = line;
+        /* A Windows editor saving this as UTF-8 puts a byte order mark in front
+         * of the first line. Without skipping it the first setting in the file
+         * is silently ignored, which is a miserable thing to debug: the file
+         * looks exactly right and one line of it does nothing. */
+        if (first_line) {
+            first_line = 0;
+            if ((UCHAR)p[0] == 0xEF && (UCHAR)p[1] == 0xBB && (UCHAR)p[2] == 0xBF)
+                p += 3;
+        }
         while (*p == ' ' || *p == '\t')
             p++;
         if (*p == '#' || *p == ';' || *p == 0)
@@ -1207,12 +1616,21 @@ static void load_config(HMODULE self)
             if (*v && strlen(v) < sizeof(g_title_version) / sizeof(wchar_t))
                 MultiByteToWideChar(CP_ACP, 0, v, -1, g_title_version,
                                     sizeof(g_title_version) / sizeof(wchar_t));
+            else if (!*v)
+                /* The line is there with nothing after it, which is how you ask
+                 * for HLSW's own version back. Leaving it out entirely means
+                 * something different: then the build's own version is shown. */
+                g_title_version[0] = 0;
         } else if (sscanf(p, "query_interval_ms = %u", &from_port) == 1) {
             g_query_interval = (int)from_port;
         } else if (sscanf(p, "block_home_calls = %u", &from_port) == 1) {
             g_block_home = from_port ? 1 : 0;
         } else if (sscanf(p, "skip_login_screen = %u", &from_port) == 1) {
             g_skip_login = from_port ? 1 : 0;
+        } else if (sscanf(p, "hide_duplicate_info = %u", &from_port) == 1) {
+            g_hide_duplicate_info = from_port ? 1 : 0;
+        } else if (sscanf(p, "refuse_held_queries = %u", &from_port) == 1) {
+            g_refuse_held = from_port ? 1 : 0;
         } else if (sscanf(p, "log = %u", &from_port) == 1) {
             /* Kept as a level, not squeezed into a flag. Clamping this to 0 or
              * 1 silently disabled the packet dump at level 2 and turned the
@@ -1236,6 +1654,9 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
     DisableThreadLibraryCalls(inst);
     InitializeCriticalSection(&g_lock);
     g_self = (HMODULE)inst;
+    /* Own version first, so that a title_version line in the file overrides it
+     * rather than the other way round. */
+    load_own_version(inst);
     load_config(inst);
 
     log_modules();
@@ -1296,9 +1717,17 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
         turn_off_login_screen();
 
     /* Cosmetic, and only when asked for. */
-    if (g_title_version[0])
+    if (g_title_version[0]) {
+        char shown[32];
+
         real_SetWindowTextW = detour_in("USER32.dll", "SetWindowTextW",
                                         (void *)my_SetWindowTextW);
+        WideCharToMultiByte(CP_ACP, 0, g_title_version, -1, shown, sizeof(shown),
+                            NULL, NULL);
+        dbg_log("title bar will read HLSW v%s", shown);
+    } else {
+        dbg_log("title bar left as HLSW built it");
+    }
 
     dbg_log("attached: recvfrom=%p sendto=%p recv=%p send=%p connect=%p, %d rcon redirect(s)",
          (void *)real_recvfrom, (void *)real_sendto, (void *)real_recv,
