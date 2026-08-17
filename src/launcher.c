@@ -35,7 +35,9 @@
 #include <windows.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <stdlib.h>
 #include <string.h>
+#include <winver.h>
 
 /* Room for a full length directory plus one of the file names appended to it,
  * so that none of the paths built below can be cut short. */
@@ -173,6 +175,163 @@ static int wait_for_port(int port, int timeout_ms)
     return 0;
 }
 
+static HANDLE  g_res_update;
+static WORD    g_group_lang;
+
+/* The name is copied rather than kept as the pointer the enumeration hands
+ * over. For a resource named by string, that pointer is a temporary ANSI
+ * conversion that is only valid until the callback returns, and using it
+ * afterwards happens to work often enough to look correct. HLSW's icon group
+ * does carry a name rather than a number, so this is not theoretical. */
+static char    g_group_name[256];
+static int     g_group_found;
+static int     g_group_is_id;
+static WORD    g_group_id;
+
+static LPCSTR group_name(void)
+{
+    return g_group_is_id ? MAKEINTRESOURCEA(g_group_id) : g_group_name;
+}
+
+/* An icon in a PE file is a directory of images. The directory, an entry of
+ * type RT_GROUP_ICON, lists the sizes and colour depths available and points
+ * at one RT_ICON per image. The shell reads the group with the lowest id and
+ * picks whichever size it needs, so that one group and the images it names are
+ * everything worth copying. */
+#pragma pack(push, 1)
+typedef struct {
+    WORD reserved, type, count;
+} GroupHeader;
+
+typedef struct {
+    BYTE  width, height, colours, reserved;
+    WORD  planes, bits;
+    DWORD bytes;
+    WORD  id;
+} GroupEntry;
+#pragma pack(pop)
+
+static BOOL CALLBACK first_group_language(HMODULE mod, LPCSTR type, LPCSTR name,
+                                          WORD lang, LONG_PTR param)
+{
+    (void)mod; (void)type; (void)name; (void)param;
+    g_group_lang = lang;
+    return FALSE;
+}
+
+/* Enumeration runs in directory order, so the first one is the lowest id and
+ * therefore the one the shell would show. Stopping here also keeps the rest of
+ * HLSW's icons out: it carries its whole interface in there, and copying all
+ * of it produced a resource directory that EndUpdateResource rejected outright
+ * with ERROR_INVALID_DATA. */
+static BOOL CALLBACK first_group(HMODULE mod, LPCSTR type, LPSTR name, LONG_PTR param)
+{
+    (void)param;
+    if (IS_INTRESOURCE(name)) {
+        g_group_is_id = 1;
+        g_group_id = (WORD)(ULONG_PTR)name;
+    } else {
+        g_group_is_id = 0;
+        lstrcpynA(g_group_name, name, sizeof(g_group_name));
+    }
+    g_group_found = 1;
+    EnumResourceLanguagesA(mod, type, name, first_group_language, 0);
+    return FALSE;
+}
+
+static void *resource_bytes(HMODULE mod, LPCSTR type, LPCSTR name, WORD lang, DWORD *size)
+{
+    HRSRC found = FindResourceExA(mod, type, name, lang);
+    HGLOBAL loaded;
+
+    if (!found)
+        return NULL;
+    *size = SizeofResource(mod, found);
+    loaded = LoadResource(mod, found);
+    if (!loaded || !*size)
+        return NULL;
+    return LockResource(loaded);
+}
+
+/* Copies the icon out of one executable into another.
+ *
+ * This exists so that the launcher can wear HLSW's icon: it takes the place of
+ * hlsw.exe, so every shortcut and the task bar would otherwise show the blank
+ * default instead of the icon that was there before.
+ *
+ * Deliberately done here and not at build time. HLSW's licence lets its own
+ * files be copied and passed on, which is not the same as putting somebody
+ * else's artwork inside a program of ours and shipping that. So nothing of
+ * theirs is shipped: install.ps1 calls this, and the icon is lifted from the
+ * copy of HLSW that is already on the machine.
+ *
+ * Both the images and the directory that indexes them have to travel, or the
+ * shell finds a group pointing at pictures that are not there. */
+static int copy_icon(const char *from, const char *to)
+{
+    HMODULE src;
+    GroupHeader *header;
+    GroupEntry *entry;
+    DWORD size = 0;
+    int i, ok;
+
+    src = LoadLibraryExA(from, NULL, LOAD_LIBRARY_AS_DATAFILE);
+    if (!src) {
+        launcher_log("icon: cannot read %s, error %lu", from, GetLastError());
+        return 0;
+    }
+
+    g_group_found = 0;
+    EnumResourceNamesA(src, RT_GROUP_ICON, first_group, 0);
+    if (!g_group_found) {
+        launcher_log("icon: %s carries no icon", from);
+        FreeLibrary(src);
+        return 0;
+    }
+
+    header = (GroupHeader *)resource_bytes(src, RT_GROUP_ICON, group_name(), g_group_lang, &size);
+    if (!header || size < sizeof(GroupHeader) + sizeof(GroupEntry)) {
+        launcher_log("icon: the icon directory in %s could not be read, error %lu",
+                     from, GetLastError());
+        FreeLibrary(src);
+        return 0;
+    }
+
+    g_res_update = BeginUpdateResourceA(to, FALSE);
+    if (!g_res_update) {
+        launcher_log("icon: cannot open %s for resource update, error %lu", to, GetLastError());
+        FreeLibrary(src);
+        return 0;
+    }
+
+    /* The images first, then the directory that names them, so the file is
+     * never left describing pictures it does not contain. */
+    entry = (GroupEntry *)(header + 1);
+    for (i = 0; i < header->count; i++) {
+        DWORD image_size = 0;
+        void *image;
+
+        if ((DWORD)((char *)(entry + i + 1) - (char *)header) > size)
+            break;
+        image = resource_bytes(src, RT_ICON, MAKEINTRESOURCEA(entry[i].id),
+                               g_group_lang, &image_size);
+        if (image && !UpdateResourceA(g_res_update, RT_ICON,
+                                      MAKEINTRESOURCEA(entry[i].id),
+                                      g_group_lang, image, image_size))
+            launcher_log("icon: image %d could not be written, error %lu",
+                         entry[i].id, GetLastError());
+    }
+
+    if (!UpdateResourceA(g_res_update, RT_GROUP_ICON, group_name(), g_group_lang, header, size))
+        launcher_log("icon: the icon directory could not be written, error %lu", GetLastError());
+
+    ok = EndUpdateResource(g_res_update, FALSE) ? 1 : 0;
+    if (!ok)
+        launcher_log("icon: writing the icon into %s failed, error %lu", to, GetLastError());
+    FreeLibrary(src);
+    return ok;
+}
+
 /* Picks the program to start, and says why when it cannot.
  *
  *    1  found, path is in out
@@ -183,6 +342,36 @@ static int wait_for_port(int port, int timeout_ms)
  * leaves behind: the update writes its own hlsw.exe over the launcher, the
  * launcher survives only under the name it was installed as, and starting
  * "hlsw.exe" from here would mean starting ourselves without end. */
+/* True if the file is another copy of this launcher.
+ *
+ * Without this the launcher will start whatever sits under the name it expects,
+ * and if that is a copy of itself it starts another one, without end. An
+ * installer that mistook the launcher for HLSW and moved it over hlsw-real.exe
+ * did exactly that, and seven thousand processes later the cause was still not
+ * obvious from the outside. Cheap to check, so it is checked. */
+static int is_this_launcher(const char *path)
+{
+    DWORD handle = 0, size;
+    void *info;
+    char *product = NULL;
+    UINT len = 0;
+    int ours = 0;
+
+    size = GetFileVersionInfoSizeA(path, &handle);
+    if (!size)
+        return 0;
+    info = malloc(size);
+    if (!info)
+        return 0;
+    if (GetFileVersionInfoA(path, 0, size, info)
+        && VerQueryValueA(info, "\\StringFileInfo\\040904B0\\ProductName",
+                          (LPVOID *)&product, &len)
+        && product && _stricmp(product, "hlswfix") == 0)
+        ours = 1;
+    free(info);
+    return ours;
+}
+
 static int find_hlsw(const char *dir, char *out, size_t size)
 {
     char self[MAX_PATH];
@@ -190,15 +379,19 @@ static int find_hlsw(const char *dir, char *out, size_t size)
     /* Preferred whenever it exists: it only exists because the launcher was
      * given the name hlsw.exe and the real program had to move aside. */
     snprintf(out, size, "%shlsw-real.exe", dir);
-    if (GetFileAttributesA(out) != INVALID_FILE_ATTRIBUTES)
+    if (GetFileAttributesA(out) != INVALID_FILE_ATTRIBUTES && !is_this_launcher(out))
         return 1;
 
     snprintf(out, size, "%shlsw.exe", dir);
     if (GetFileAttributesA(out) == INVALID_FILE_ATTRIBUTES)
         return 0;
 
+    /* Either literally this file, or another copy of this program. Both would
+     * mean starting ourselves. */
     GetModuleFileNameA(NULL, self, sizeof(self));
-    return _stricmp(self, out) == 0 ? -1 : 1;
+    if (_stricmp(self, out) == 0 || is_this_launcher(out))
+        return -1;
+    return 1;
 }
 
 static int inject(HANDLE proc, const char *dll_path)
@@ -223,7 +416,17 @@ static int inject(HANDLE proc, const char *dll_path)
     if (!thread)
         return 0;
 
-    WaitForSingleObject(thread, 15000);
+    if (WaitForSingleObject(thread, 15000) != WAIT_OBJECT_0) {
+        /* Still running after fifteen seconds. Its exit code would read as
+         * STILL_ACTIVE, which is not zero and would have been taken for the
+         * module handle and reported as success. The page it is reading the
+         * path out of stays allocated for the same reason: freeing it now
+         * would pull the argument out from under a thread that is still using
+         * it, and a leaked page is the cheaper of the two. */
+        CloseHandle(thread);
+        return 0;
+    }
+
     GetExitCodeThread(thread, &result);
     CloseHandle(thread);
     VirtualFreeEx(proc, mem, 0, MEM_RELEASE);
@@ -241,6 +444,13 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR args, int show)
     int have_tunnel, tunnel_port = 0, started = 0;
 
     (void)inst; (void)prev; (void)show;
+
+    /* Called by install.ps1, never by a user. Does its one job and leaves. */
+    if (__argc == 4 && strcmp(__argv[1], "--copy-icon") == 0) {
+        own_dir(dir, sizeof(dir));
+        snprintf(g_log_path, sizeof(g_log_path), "%shlswfix.log", dir);
+        return copy_icon(__argv[2], __argv[3]) ? 0 : 1;
+    }
 
     own_dir(dir, sizeof(dir));
     snprintf(dll, sizeof(dll), "%shlswfix.dll", dir);

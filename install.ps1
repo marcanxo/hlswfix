@@ -115,23 +115,32 @@ function Get-Version([string]$path) {
     return "{0}.{1}.{2}.{3}" -f $i.FileMajorPart, $i.FileMinorPart, $i.FileBuildPart, $i.FilePrivatePart
 }
 
-function Test-RealHlsw([string]$path) {
-    if (-not (Test-Path $path)) { return $false }
-    $info = (Get-Item $path).VersionInfo
-    return ($info.FileDescription -match 'HLSW') -or ($info.ProductName -match 'HLSW')
-}
-
-# The launcher is recognised by content wherever possible. Falling back on
-# "carries no HLSW version resource and is small" covers a launcher built from
-# an older revision of the sources, which will not match by hash.
+# Ours is decided first and on its own evidence, never by ruling HLSW out.
+# The launcher carries ProductName "hlswfix" in its version resource; older
+# builds carry none at all, and are recognised by being byte for byte what we
+# are about to install, or simply by being far too small to be HLSW, which is
+# twenty megabytes.
 function Test-OurLauncher([string]$path) {
     if (-not (Test-Path $path)) { return $false }
+    if ((Get-Item $path).VersionInfo.ProductName -eq 'hlswfix') { return $true }
     if (Test-Path $payloadExe) {
         $a = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
         $b = (Get-FileHash -LiteralPath $payloadExe -Algorithm SHA256).Hash
         if ($a -eq $b) { return $true }
     }
-    return (-not (Test-RealHlsw $path)) -and ((Get-Item $path).Length -lt 1MB)
+    return ((Get-Item $path).Length -lt 1MB)
+}
+
+# Asked only after Test-OurLauncher has said no. Matching "HLSW" anywhere in
+# the description used to be the first question asked, and "hlswfix launcher"
+# contains it: the installer took its own launcher for HLSW and moved it over
+# hlsw-real.exe, destroying the real program and leaving a launcher that
+# started itself without end.
+function Test-RealHlsw([string]$path) {
+    if (-not (Test-Path $path)) { return $false }
+    if (Test-OurLauncher $path) { return $false }
+    $info = (Get-Item $path).VersionInfo
+    return ($info.FileDescription -match 'HLSW') -or ($info.ProductName -match 'HLSW')
 }
 
 if ($Uninstall) {
@@ -190,6 +199,19 @@ if (-not (Test-Path $real)) {
 }
 
 Copy-Item $payloadExe $exe -Force
+
+# The launcher takes HLSW's place, so without this every shortcut and the task
+# bar would show the blank default icon instead of the one that was there
+# before. It is lifted from the copy of HLSW on this machine and never shipped
+# with this: HLSW's licence lets its own files be passed on, which is not the
+# same as putting somebody else's artwork inside a program of ours.
+foreach ($target in @($exe, (Join-Path $Dir 'hlswfix.exe'))) {
+    if (-not (Test-Path $target)) { continue }
+    $icon = Start-Process $payloadExe -ArgumentList '--copy-icon', "`"$real`"", "`"$target`"" -Wait -PassThru
+    if ($icon.ExitCode -ne 0) {
+        Write-Host ("could not give {0} HLSW's icon, see hlswfix.log. Harmless." -f (Split-Path -Leaf $target))
+    }
+}
 
 Write-Host ""
 Write-Host "Done."

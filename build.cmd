@@ -44,15 +44,29 @@ if errorlevel 1 (
     exit /b 1
 )
 
+if "%MINGW%"=="" (set WINDRES=windres) else (set WINDRES=%MINGW%\windres.exe)
+
 if not exist "%OUT%" mkdir "%OUT%"
 
+rem The version resource is not decoration. It tells anyone who opens the file
+rem properties what the file under HLSW's name really is, and it gives the
+rem executable a resource section, without which BeginUpdateResource refuses to
+rem work and the launcher cannot be handed HLSW's icon at install time.
+echo Building the version resources
+"%WINDRES%" -DBUILD_DLL -i "%SRC%\hlswfix.rc" -O coff -o "%OUT%\hlswfix.dll.res"
+if errorlevel 1 exit /b 1
+"%WINDRES%" -i "%SRC%\hlswfix.rc" -O coff -o "%OUT%\hlswfix.exe.res"
+if errorlevel 1 exit /b 1
+
 echo Building hlswfix.dll
-"%GCC%" %CFLAGS% -shared -o "%OUT%\hlswfix.dll" "%SRC%\hlswfix.c" -lws2_32
+"%GCC%" %CFLAGS% -shared -o "%OUT%\hlswfix.dll" "%SRC%\hlswfix.c" "%OUT%\hlswfix.dll.res" -lws2_32 -ladvapi32 -lversion
 if errorlevel 1 exit /b 1
 
 echo Building hlswfix.exe
-"%GCC%" %CFLAGS% -mwindows -o "%OUT%\hlswfix.exe" "%SRC%\launcher.c" -lws2_32
+"%GCC%" %CFLAGS% -mwindows -o "%OUT%\hlswfix.exe" "%SRC%\launcher.c" "%OUT%\hlswfix.exe.res" -lws2_32 -ladvapi32 -lversion
 if errorlevel 1 exit /b 1
+
+del "%OUT%\hlswfix.dll.res" "%OUT%\hlswfix.exe.res" 2>nul
 
 echo.
 echo Built into %OUT%.

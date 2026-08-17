@@ -1,0 +1,52 @@
+/* Version information for both the launcher and the library.
+ *
+ * Two reasons this is here. It lets anyone who right clicks hlsw.exe and opens
+ * the properties see what the file actually is, which matters when the file
+ * sitting under HLSW's name is not HLSW. And it gives the executable a
+ * resource section, without which BeginUpdateResource refuses to work and the
+ * launcher cannot be given HLSW's icon at install time.
+ *
+ * build.cmd passes -DBUILD_DLL for the library and nothing for the launcher.
+ */
+
+#include <winver.h>
+
+#ifdef BUILD_DLL
+#define FILE_TYPE          VFT_DLL
+#define NAME_STRING        "hlswfix.dll"
+#define DESCRIPTION_STRING "hlswfix, teaches HLSW the A2S_INFO challenge"
+#else
+#define FILE_TYPE          VFT_APP
+#define NAME_STRING        "hlswfix.exe"
+#define DESCRIPTION_STRING "hlswfix launcher"
+#endif
+
+1 VERSIONINFO
+FILEVERSION    1,6,0,0
+PRODUCTVERSION 1,6,0,0
+FILEFLAGSMASK  VS_FFI_FILEFLAGSMASK
+FILEFLAGS      0
+FILEOS         VOS_NT_WINDOWS32
+FILETYPE       FILE_TYPE
+FILESUBTYPE    0
+{
+    BLOCK "StringFileInfo"
+    {
+        BLOCK "040904B0"
+        {
+            VALUE "CompanyName",      "marcanxo"
+            VALUE "FileDescription",  DESCRIPTION_STRING
+            VALUE "FileVersion",      "1.6.0.0"
+            VALUE "InternalName",     "hlswfix"
+            VALUE "OriginalFilename", NAME_STRING
+            VALUE "ProductName",      "hlswfix"
+            VALUE "ProductVersion",   "1.6.0"
+            VALUE "LegalCopyright",   "MIT licensed. Not connected with HLSW or its authors."
+            VALUE "Comments",         "https://github.com/marcanxo/hlswfix"
+        }
+    }
+    BLOCK "VarFileInfo"
+    {
+        VALUE "Translation", 0x409, 1200
+    }
+}

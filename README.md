@@ -16,7 +16,7 @@ whole of what it touches.
 
 1. Install HLSW first. If you do not have it, see [Getting HLSW](#getting-hlsw)
    below.
-2. Download `hlswfix-1.5.1.zip` from the [releases page][releases]. Not the
+2. Download `hlswfix-1.6.0.zip` from the [releases page][releases]. Not the
    green **Code** button: that gives you the sources without the built files.
 3. Unpack it anywhere and close HLSW if it is running.
 4. Double click **`install.cmd`**.
@@ -34,10 +34,16 @@ the `hlswfix` files are deleted. Your `hlswfix.ini` is left alone in case you
 edited it. By hand it is the same three steps: delete the `hlswfix.*` files,
 delete `hlsw.exe` if it is the small one, rename `hlsw-real.exe` back.
 
-Two details worth knowing. While HLSW runs you will now see two processes,
-`hlsw.exe` (the launcher, waiting) and `hlsw-real.exe` (HLSW itself). And the
-built in server lists stay empty, because they pointed at hlsw.net; servers
-have to be added by hand.
+Three details worth knowing. While HLSW runs you will now see two processes,
+`hlsw.exe` (the launcher, waiting) and `hlsw-real.exe` (HLSW itself). The built
+in server lists stay empty, because they pointed at hlsw.net; servers have to
+be added by hand. And the login screen is switched off and HLSW stops reporting
+to its old home servers, both of which you can turn back on, see
+[Settings](#settings).
+
+The launcher takes HLSW's icon during the install, so your shortcuts look the
+way they always did. That icon is lifted from the copy of HLSW on your machine
+and is not shipped with this.
 
 <details>
 <summary>Without renaming anything</summary>
@@ -143,7 +149,7 @@ server API inside `steamclient.so`, where no engine cvar reaches.
 
 ## What it does
 
-Seven functions are redirected inside the HLSW process, and no others:
+Twelve functions are redirected inside the HLSW process, and no others:
 
 | redirected | why |
 |---|---|
@@ -152,6 +158,7 @@ Seven functions are redirected inside the HLSW process, and no others:
 | `recvfrom`, `recv`, `WSARecvFrom`, `WSARecv` | Catch the `0x41` that answers such a query, put the repeat on the wire as a side effect, and hand HLSW exactly what arrived. HLSW never learns anything happened. |
 | `connect` | Only for the optional rcon redirect below. Stream sockets only, and it does nothing at all unless `rcon_redirect` is configured. |
 | `select` | Nothing but a control point: if it never fires, nothing is reaching the hooks. Always installed, changes no behaviour. |
+| `gethostbyname`, `getaddrinfo`, `WSAAsyncGetHostByName` | Refuse to look up hlsw.net and hlsw.org, so HLSW cannot report to servers that are no longer its own. See below. Not installed at all if `block_home_calls = 0`. |
 | `SetWindowTextW` | Only for the version in the title bar. |
 
 All four receive functions are hooked because HLSW uses all of them: the plain
@@ -205,7 +212,7 @@ Everything in `hlswfix.ini` is optional, including the file itself. The fix
 needs no configuration. The comments in the file explain each setting; three
 are worth repeating here.
 
-**`title_version`** is why the title bar says **HLSW v1.5.1**. The developers'
+**`title_version`** is why the title bar says **HLSW v1.6.0**. The developers'
 last release was 1.4.0.5 in 2011, and the new number says at a glance that this
 HLSW has the fix in it. Only the displayed string changes: HLSW builds that
 title from its own version resource, and the resource is untouched. Comment the
@@ -225,6 +232,9 @@ it.
 rights and without a window, and is stopped again with HLSW. It does not have to
 be ssh. Treat `hlswfix.ini` like a startup entry: whoever can write it can run
 anything as you.
+
+**`block_home_calls`** and **`skip_login_screen`** are both on by default and
+both have a section of their own below.
 
 **`log`** writes `hlswfix.log` next to `hlsw.exe`. Plain text, appended, never
 rotated. At `1` it names the servers involved, at `2` it holds the packets
@@ -281,21 +291,40 @@ unpacks anywhere and needs no installation. Point `MINGW` at its `bin` folder,
 or put `gcc` on the PATH. Output lands in `build\`, and `pack.ps1` assembles the
 release archive from it.
 
-## HLSW talks to servers that are no longer its own
+## HLSW reports to servers that are no longer its own
 
-This has nothing to do with the fix, but you should know. From HLSW's own
-`license.txt`:
+From HLSW's own `license.txt`:
 
 > HLSW transfers data to central servers owned by Stripf Software to enable
 > several functionalities in HLSW like version check, console log, location
 > detection, login, buddy list, etc.
 
-Those domains are still registered and still point at a host, they just do not
-serve anything useful any more. Whoever holds them can change that at any time,
-and a program from 2011 will keep talking to them. Block them in your hosts file
-or firewall if that bothers you; HLSW works without them. This project neither
-adds to that traffic nor blocks it. If you want to see it for yourself, `log = 2`
-records every address HLSW connects to.
+Measured rather than taken on trust: HLSW sends a ten byte packet to
+`s9b.hlsw.org`, that is `62.75.203.63`, every five seconds for as long as it
+runs, and nothing ever comes back. It does that on its own, with no feature of
+yours involved.
+
+hlsw.net and hlsw.org are still registered and still point at a host. Whoever
+holds them next inherits that traffic, and a program from 2011 will keep
+reporting to them without ever asking again. Nothing HLSW does for you needs
+any of it.
+
+So `block_home_calls` is on by default. It refuses the name lookups, and it
+also refuses the address at the socket, because HLSW caches what it last
+resolved under `HKCU\Software\HLSW\Master Server` and would otherwise never
+need to look the name up again. Measured over a run afterwards: eight packets
+held back, none sent, and the game servers answered exactly as before. Set it
+to `0` in `hlswfix.ini` to leave HLSW's own traffic alone.
+
+## The login screen
+
+A fresh installation opens with a login screen for an account on servers that
+stopped answering years ago. `skip_login_screen`, on by default, switches it
+off. It is HLSW's own setting, `LoginOnStartup` and `AutoLogin` under
+`HKCU\Software\HLSW\Management`, so nothing is intercepted and HLSW's own
+settings dialog still shows the truth. Turning it back on inside HLSW lasts
+until the next start, because this is applied at every start; set
+`skip_login_screen = 0` if you want the screen back for good.
 
 ## How the functions are redirected, and why not the import tables
 
@@ -348,6 +377,9 @@ every packet as hex, which is the tool that ended the guessing.
 HLSW 1.4.0.5 on Windows 10, against seven servers at once over several hours.
 Queries, the player and rules lists, and rcon all work, including the large
 SourceMod admin interface in `cfg\rcon_sourcemod.cfg`.
+
+The calls home were measured with `log = 2` before and after, and blocking them
+changed nothing else: the game servers answered exactly as before.
 
 GoldSrc works too, and it is worth saying why that was not a given. Those
 servers answer `A2S_INFO` without demanding a challenge at all, so they never

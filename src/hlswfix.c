@@ -146,6 +146,24 @@ static HMODULE         g_self;
 
 static int             g_query_interval = DEFAULT_QUERY_INTERVAL_MS;
 
+/* On by default. HLSW sends a ten byte packet to s9b.hlsw.org every five
+ * seconds, forever, and gets nothing back; those domains are still registered
+ * and can change hands at any time, so a program from 2011 keeps reporting to
+ * whoever holds them now. Nothing HLSW does for you needs them. */
+static int             g_block_home = 1;
+
+/* On by default. The login screen wants an account on servers that stopped
+ * answering years ago, and it is the first thing a fresh install shows. */
+static int             g_skip_login = 1;
+
+#define MAX_HOME_IPS 8
+static ULONG           g_home_ips[MAX_HOME_IPS];
+static int             g_home_ip_count;
+
+/* Defined further down, next to the rest of the calling home business, but
+ * needed by the send hook above it. */
+static int is_home_address(const struct sockaddr_in *a);
+
 /* Version to show in the window title instead of the built in one. Empty
  * leaves the title alone, and then the hook is not even installed. */
 static wchar_t         g_title_version[32];
@@ -161,6 +179,11 @@ static int (WSAAPI *real_recv)(SOCKET, char *, int, int);
 static int (WSAAPI *real_send)(SOCKET, const char *, int, int);
 static int (WSAAPI *real_connect)(SOCKET, const struct sockaddr *, int);
 static int (WSAAPI *real_select)(int, fd_set *, fd_set *, fd_set *, const struct timeval *);
+static struct hostent *(WSAAPI *real_gethostbyname)(const char *);
+static int (WSAAPI *real_getaddrinfo)(const char *, const char *,
+                                      const struct addrinfo *, struct addrinfo **);
+static HANDLE (WSAAPI *real_WSAAsyncGetHostByName)(HWND, unsigned int, const char *,
+                                                   char *, int);
 
 /* The overlapped capable receive pair. HLSW uses these for its steady state
  * monitoring, and plain recvfrom only for the burst of probes it sends when a
@@ -447,6 +470,14 @@ static int WSAAPI my_sendto(SOCKET s, const char *buf, int len, int flags,
     if (!to || tolen < (int)sizeof(struct sockaddr_in) || to->sa_family != AF_INET)
         return real_sendto(s, buf, len, flags, to, tolen);
 
+    /* Reported as sent. Telling HLSW the send failed would only make it retry
+     * and log errors at us; as far as it is concerned the packet went out and
+     * nobody answered, which is what has been happening for years anyway. */
+    if (g_block_home && is_home_address(sin)) {
+        dump_packet("BLOCKED ->", sin, buf, len);
+        return len;
+    }
+
     /* Logged after the decision, not before, and labelled with what actually
      * happened. Dumping the packet on the way in makes a query that was held
      * back look exactly like one that went out, which turns the packet log
@@ -639,6 +670,134 @@ static int WSAAPI my_select(int nfds, fd_set *rd, fd_set *wr, fd_set *ex,
     return real_select(nfds, rd, wr, ex, tv);
 }
 
+/* HLSW keeps the master server address it last resolved under
+ * HKCU\Software\HLSW\Master Server, so refusing to resolve the name would on
+ * its own change nothing: it never has to ask again. Measured on this machine,
+ * IP2 held 62.75.203.63, which is s9b.hlsw.org, and a ten byte packet went
+ * there every five seconds. What is cached is therefore read here and refused
+ * at the socket as well. */
+static void load_home_addresses(void)
+{
+    HKEY key;
+    int i;
+
+    if (RegOpenKeyExA(HKEY_CURRENT_USER, "Software\\HLSW\\Master Server",
+                      0, KEY_READ, &key) != ERROR_SUCCESS)
+        return;
+
+    for (i = 0; i < MAX_HOME_IPS; i++) {
+        char name[16], value[64];
+        DWORD type = 0, size = sizeof(value) - 1;
+        ULONG addr;
+
+        if (i == 0)
+            strcpy(name, "IP");
+        else
+            snprintf(name, sizeof(name), "IP%d", i + 1);
+
+        memset(value, 0, sizeof(value));
+        if (RegQueryValueExA(key, name, NULL, &type, (BYTE *)value, &size) != ERROR_SUCCESS)
+            continue;
+        if (type != REG_SZ)
+            continue;
+
+        addr = inet_addr(value);
+        if (addr != INADDR_NONE && g_home_ip_count < MAX_HOME_IPS) {
+            g_home_ips[g_home_ip_count++] = addr;
+            dbg_log("master server %s cached in the registry as %s, blocked", name, value);
+        }
+    }
+    RegCloseKey(key);
+}
+
+static int is_home_address(const struct sockaddr_in *a)
+{
+    int i;
+
+    for (i = 0; i < g_home_ip_count; i++)
+        if (a->sin_addr.s_addr == g_home_ips[i])
+            return 1;
+    return 0;
+}
+
+/* The login screen is HLSW's own setting, so it is switched off in HLSW's own
+ * settings rather than by intercepting the window. It can be turned back on
+ * inside HLSW, but this runs at every start, so the lasting way back is
+ * skip_login_screen = 0 in hlswfix.ini. */
+static void turn_off_login_screen(void)
+{
+    HKEY key;
+    DWORD off = 0;
+
+    if (RegCreateKeyExA(HKEY_CURRENT_USER, "Software\\HLSW\\Management", 0, NULL, 0,
+                        KEY_SET_VALUE, NULL, &key, NULL) != ERROR_SUCCESS)
+        return;
+    RegSetValueExA(key, "LoginOnStartup", 0, REG_DWORD, (const BYTE *)&off, sizeof(off));
+    RegSetValueExA(key, "AutoLogin", 0, REG_DWORD, (const BYTE *)&off, sizeof(off));
+    RegCloseKey(key);
+    dbg_log("login on startup switched off");
+}
+
+/* True for hlsw.net, hlsw.org and anything underneath them. Matched on the
+ * tail, so s9b.hlsw.org is caught without having to know every host name the
+ * developers ever used. The dot before the suffix is required, or a domain
+ * like notahlsw.org would match as well. */
+static int is_home_domain(const char *name)
+{
+    static const char *domains[] = { "hlsw.net", "hlsw.org" };
+    size_t n, d;
+    int i;
+
+    if (!name)
+        return 0;
+    n = strlen(name);
+    for (i = 0; i < 2; i++) {
+        d = strlen(domains[i]);
+        if (n < d)
+            continue;
+        if (_stricmp(name + n - d, domains[i]) != 0)
+            continue;
+        if (n == d || name[n - d - 1] == '.')
+            return 1;
+    }
+    return 0;
+}
+
+/* The three ways a program of this age asks for an address. Refusing here
+ * rather than at the socket means HLSW never learns where to send, and it
+ * fails exactly as it would with no network, which is a state it was built to
+ * survive. */
+static struct hostent *WSAAPI my_gethostbyname(const char *name)
+{
+    if (g_block_home && is_home_domain(name)) {
+        dbg_log("blocked lookup of %s", name);
+        WSASetLastError(WSAHOST_NOT_FOUND);
+        return NULL;
+    }
+    return real_gethostbyname(name);
+}
+
+static int WSAAPI my_getaddrinfo(const char *node, const char *service,
+                                 const struct addrinfo *hints, struct addrinfo **res)
+{
+    if (g_block_home && is_home_domain(node)) {
+        dbg_log("blocked lookup of %s", node);
+        return WSAHOST_NOT_FOUND;
+    }
+    return real_getaddrinfo(node, service, hints, res);
+}
+
+static HANDLE WSAAPI my_WSAAsyncGetHostByName(HWND hwnd, unsigned int msg,
+                                              const char *name, char *buf, int buflen)
+{
+    if (g_block_home && is_home_domain(name)) {
+        dbg_log("blocked lookup of %s", name);
+        WSASetLastError(WSAHOST_NOT_FOUND);
+        return NULL;
+    }
+    return real_WSAAsyncGetHostByName(hwnd, msg, name, buf, buflen);
+}
+
 static int WSAAPI my_connect(SOCKET s, const struct sockaddr *name, int namelen)
 {
     const struct sockaddr_in *sin = (const struct sockaddr_in *)name;
@@ -648,6 +807,13 @@ static int WSAAPI my_connect(SOCKET s, const struct sockaddr *name, int namelen)
         return real_connect(s, name, namelen);
 
     dump_packet(is_udp(s) ? "CONNECT udp" : "CONNECT tcp", sin, "", 0);
+
+    if (g_block_home && is_home_address(sin)) {
+        dbg_log("blocked connection to %s:%d", inet_ntoa(sin->sin_addr),
+                ntohs(sin->sin_port));
+        WSASetLastError(WSAECONNREFUSED);
+        return SOCKET_ERROR;
+    }
 
     /* Stream sockets only. HLSW connects its query socket as well, and sending
      * that one down the rcon tunnel would break exactly the thing this library
@@ -1033,11 +1199,20 @@ static void load_config(HMODULE self)
 
             while (*v == ' ' || *v == '\t')
                 v++;
-            if (*v)
+            /* Length checked first: given a target too small for the whole
+             * string, MultiByteToWideChar fails and writes nothing, which
+             * would leave this buffer without a terminator for everything
+             * afterwards to run past. A byte count that fits is a wide
+             * character count that fits. */
+            if (*v && strlen(v) < sizeof(g_title_version) / sizeof(wchar_t))
                 MultiByteToWideChar(CP_ACP, 0, v, -1, g_title_version,
                                     sizeof(g_title_version) / sizeof(wchar_t));
         } else if (sscanf(p, "query_interval_ms = %u", &from_port) == 1) {
             g_query_interval = (int)from_port;
+        } else if (sscanf(p, "block_home_calls = %u", &from_port) == 1) {
+            g_block_home = from_port ? 1 : 0;
+        } else if (sscanf(p, "skip_login_screen = %u", &from_port) == 1) {
+            g_skip_login = from_port ? 1 : 0;
         } else if (sscanf(p, "log = %u", &from_port) == 1) {
             /* Kept as a level, not squeezed into a flag. Clamping this to 0 or
              * 1 silently disabled the packet dump at level 2 and turned the
@@ -1104,6 +1279,21 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
     /* Kept as a control point: if select never fires, nothing is reaching the
      * hooks and there is no point looking at the query logic. */
     real_select = detour_api("select", (void *)my_select);
+
+    /* Name resolution, so that HLSW's calls home never get an address. All
+     * three are hooked because a program of this age may use any of them, and
+     * only the ones that took are then in force. The addresses it has already
+     * cached are handled at the socket, see load_home_addresses. */
+    if (g_block_home) {
+        real_gethostbyname = detour_api("gethostbyname", (void *)my_gethostbyname);
+        real_getaddrinfo   = detour_api("getaddrinfo",   (void *)my_getaddrinfo);
+        real_WSAAsyncGetHostByName = detour_api("WSAAsyncGetHostByName",
+                                                (void *)my_WSAAsyncGetHostByName);
+        load_home_addresses();
+    }
+
+    if (g_skip_login)
+        turn_off_login_screen();
 
     /* Cosmetic, and only when asked for. */
     if (g_title_version[0])
