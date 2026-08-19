@@ -17,7 +17,7 @@ und legt Dateien daneben, und mehr fasst er nicht an.
 
 1. Zuerst HLSW installieren. Falls du es nicht hast, siehe
    [HLSW beschaffen](#hlsw-beschaffen) weiter unten.
-2. `hlswfix-1.7.0.0.zip` von der [Releases-Seite][releases] laden. Nicht über den
+2. `hlswfix-1.7.1.0.zip` von der [Releases-Seite][releases] laden. Nicht über den
    grünen **Code**-Knopf: der gibt dir die Quellen ohne die gebauten Dateien.
 3. Irgendwohin entpacken und HLSW schließen, falls es läuft.
 4. Doppelklick auf **`install.cmd`**.
@@ -284,7 +284,7 @@ Alles in `hlswfix.ini` ist optional, die Datei selbst eingeschlossen. Der Fix
 braucht keine Konfiguration. Die Kommentare in der Datei erklären jede
 Einstellung, drei sind es wert, hier wiederholt zu werden.
 
-**`title_version`** ist der Grund, warum in der Titelzeile **HLSW v1.7.0.0**
+**`title_version`** ist der Grund, warum in der Titelzeile **HLSW v1.7.1.0**
 steht. Die letzte Version der Entwickler war 1.4.0.5 aus dem Jahr 2011, und die
 neue Nummer sagt auf einen Blick, dass in diesem HLSW der Fix steckt. Setzen
 musst du sie nicht: ohne die Zeile wird die Version des Fixes selbst angezeigt,
@@ -470,14 +470,25 @@ Proxy, der nie antwortet, oder eine GitHub-Störung den Start von HLSW nicht
 aufhalten kann. Über dich oder diesen Rechner geht nichts hinaus: keine Version,
 kein Konto, keine Kennung, nichts, woran sich zwei Nutzer unterscheiden ließen.
 
-Installieren ersetzt zwei Dateien, `hlswfix.dll` und den Launcher. Beide werden
-gegen die SHA-256 geprüft, die GitHub zum Release veröffentlicht, bevor auf der
-Platte irgendetwas angefasst wird, und schlägt einer der beiden Schritte fehl,
-wird alles zurückgedreht. HLSW darf dabei offen bleiben: eine Datei, die in
-Benutzung ist, lässt sich unter Windows zwar nicht löschen, aber sehr wohl
-umbenennen, also liegen die ersetzten Fassungen als `.old` daneben, bis der
-Launcher sie beim nächsten Start wegräumt. Die neue Fassung übernimmt beim
-nächsten Start von HLSW.
+Installieren lädt dasselbe Archiv, das auch ein Mensch laden würde, prüft es
+gegen die SHA-256, die GitHub dazu veröffentlicht, und holt `hlswfix.dll` und
+den Launcher daraus. Auf der Platte wird nichts angefasst, bevor das alles
+geklappt hat, und scheitert danach ein Schritt, wird alles zurückgedreht. HLSW
+darf dabei offen bleiben: eine Datei, die in Benutzung ist, lässt sich unter
+Windows zwar nicht löschen, aber sehr wohl umbenennen, also liegen die ersetzten
+Fassungen als `.old` daneben, bis der Launcher sie beim nächsten Start
+wegräumt. Die neue Fassung übernimmt beim nächsten Start von HLSW.
+
+Ein Entpackprogramm braucht es dafür nicht, und das ist Absicht. Eines
+mitzuliefern hieße eine zweite unsignierte Datei im Archiv eines Programms, das
+sich ohnehin schon vor Virenscannern rechtfertigen muss, dazu ein fremder
+Parser, den jemand pflegen müsste. Eines von Windows aufzurufen hieße, dass die
+Funktion auf einem Rechner, den nie jemand sieht, still nicht mehr geht.
+Stattdessen legt `pack.ps1` genau diese zwei Einträge unkomprimiert ins Archiv,
+dann ist Auspacken Finden und Bytes kopieren; alles andere darin bleibt
+komprimiert, und heraus kommt ein ganz normales Zip, das jeder Explorer öffnet.
+Das Archiv ist dafür rund hundert Kilobyte größer, und auf der Release-Seite
+liegt eine Datei statt drei.
 
 `hlswfix.ini` wird nie angefasst. Es ist die eine Datei, die du bearbeitest, der
 Installer hat sie immer in Ruhe gelassen, und ein Updater, der sie überschreibt,

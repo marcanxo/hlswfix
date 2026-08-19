@@ -660,6 +660,29 @@ static int release_asset(const char *json, const char *filename,
     return 1;
 }
 
+/* The archive in the release, found by its shape rather than by building its
+ * name out of the tag. One less thing that has to agree with something else. */
+static int release_archive_name(const char *json, char *out, size_t cap)
+{
+    const char *p = json;
+
+    while ((p = strstr(p, "\"name\"")) != NULL) {
+        char got[128];
+        size_t n;
+
+        if (json_string(p, "name", got, sizeof(got))) {
+            n = strlen(got);
+            if (n > 12 && strncmp(got, "hlswfix-", 8) == 0
+                && strcmp(got + n - 4, ".zip") == 0) {
+                lstrcpynA(out, got, (int)cap);
+                return 1;
+            }
+        }
+        p += 6;
+    }
+    return 0;
+}
+
 static int sha256_hex(const void *data, DWORD len, char *hex, size_t cap)
 {
     BCRYPT_ALG_HANDLE alg = NULL;
@@ -1056,6 +1079,241 @@ static void *fetch_verified(const wchar_t *url, const char *want_sha, DWORD *len
     return data;
 }
 
+/* ------------------------------------------------------------------- zip */
+
+/* Reading a file out of the release archive, without a decompressor.
+ *
+ * The updater used to fetch hlswfix.dll and hlswfix.exe as separate downloads
+ * next to the archive. That worked and looked wrong: the release page then
+ * offers three things where a person only ever wants one, and the README tells
+ * them to take the zip. Worse, the two hashes the updater checked were not the
+ * hash the README publishes, so the machine and the human were verifying
+ * different files.
+ *
+ * Now there is one file for both, which raises the question of how a program
+ * this size unpacks a zip. It does not have to. The archive is built here, so
+ * pack.ps1 writes the two entries the updater installs without compressing
+ * them; everything else in it is compressed as usual and it stays an ordinary
+ * zip that Explorer and anything else opens. Reading an uncompressed entry is
+ * finding it and copying bytes.
+ *
+ * Two shapes of uncompressed are accepted, because there turned out to be two.
+ * A zip can store an entry outright, method 0, and that is the simple case.
+ * .NET, which is what pack.ps1 has to hand, answers CompressionLevel.
+ * NoCompression with method 8 instead: a deflate stream made of nothing but
+ * stored blocks, fifteen bytes longer than the file rather than shorter. Those
+ * blocks are four bytes of length and then the bytes themselves, so walking
+ * them is a dozen lines and needs no Huffman decoding, no window and no
+ * tables. Anything actually compressed is refused rather than guessed at.
+ *
+ * The alternative was to ship a copy of some unpacker, or to call one that
+ * Windows may or may not have. The first means a second unsigned executable in
+ * the archive of a program that already has to explain itself to virus
+ * scanners, plus somebody else's parser to keep up with. The second means the
+ * feature quietly stops working on a machine we never see. This depends on
+ * nothing.
+ *
+ * Nothing here trusts the file's own numbers further than it has to. The
+ * archive has already been checked against the SHA-256 published with the
+ * release before any of this runs, every offset is checked against the length
+ * of what was actually downloaded, and the entry's own CRC is checked at the
+ * end, which catches an archive built wrongly rather than tampered with. */
+
+#define ZIP_EOCD_SIG 0x06054b50
+#define ZIP_CEN_SIG  0x02014b50
+#define ZIP_LOC_SIG  0x04034b50
+#define ZIP_STORED   0
+#define ZIP_DEFLATE  8
+
+static DWORD zip_u32(const UCHAR *p)
+{
+    return (DWORD)p[0] | ((DWORD)p[1] << 8) | ((DWORD)p[2] << 16) | ((DWORD)p[3] << 24);
+}
+
+static WORD zip_u16(const UCHAR *p)
+{
+    return (WORD)((WORD)p[0] | ((WORD)p[1] << 8));
+}
+
+/* The one in the zip specification, which is also the one in PNG and gzip. The
+ * table is built rather than written out, because a wrong digit among 256
+ * constants is not something a reader would catch. */
+static DWORD zip_crc32(const void *data, DWORD len)
+{
+    static DWORD table[256];
+    static int ready;
+    const UCHAR *p = (const UCHAR *)data;
+    DWORD crc = 0xFFFFFFFFu;
+    DWORD i;
+
+    if (!ready) {
+        DWORD n, k, c;
+
+        for (n = 0; n < 256; n++) {
+            c = n;
+            for (k = 0; k < 8; k++)
+                c = (c & 1) ? (0xEDB88320u ^ (c >> 1)) : (c >> 1);
+            table[n] = c;
+        }
+        ready = 1;
+    }
+
+    for (i = 0; i < len; i++)
+        crc = table[(crc ^ p[i]) & 0xFF] ^ (crc >> 8);
+    return crc ^ 0xFFFFFFFFu;
+}
+
+/* A deflate stream that is nothing but stored blocks, copied out.
+ *
+ * Each block begins on a byte boundary here: three header bits, of which the
+ * lowest says whether it is the last and the next two must be zero for stored,
+ * then the rest of that byte is padding, then the length twice, the second
+ * time inverted, then the bytes. Anything else in the stream means the entry
+ * really was compressed, and this says so rather than returning something
+ * plausible. */
+static int inflate_stored_only(const UCHAR *in, DWORD in_len, UCHAR *out, DWORD out_len)
+{
+    DWORD at = 0, wrote = 0;
+
+    for (;;) {
+        UCHAR header;
+        WORD len, nlen;
+        int final;
+
+        if (at + 5 > in_len)
+            return 0;
+        header = in[at++];
+        final = header & 1;
+        if (((header >> 1) & 3) != 0)
+            return 0;
+
+        len = zip_u16(in + at);
+        nlen = zip_u16(in + at + 2);
+        at += 4;
+        if ((WORD)~len != nlen)
+            return 0;
+        if (at + len > in_len || wrote + len > out_len)
+            return 0;
+
+        memcpy(out + wrote, in + at, len);
+        at += len;
+        wrote += len;
+
+        if (final)
+            break;
+    }
+    return wrote == out_len;
+}
+
+/* One entry out of the archive, as a buffer the caller frees, or NULL. */
+static void *zip_extract(const void *zip, DWORD zip_len, const char *want, DWORD *out_len)
+{
+    const UCHAR *base = (const UCHAR *)zip;
+    const UCHAR *eocd = NULL;
+    DWORD cd_off, cd_size, at;
+    WORD count, i;
+    size_t want_len = strlen(want);
+    DWORD back, scan;
+
+    /* The end record is the last thing in the file, followed only by an
+     * archive comment of up to 65535 bytes. */
+    if (zip_len < 22)
+        return NULL;
+    back = zip_len - 22 > 65535 ? 65535 : zip_len - 22;
+    for (scan = 0; scan <= back; scan++) {
+        const UCHAR *p = base + zip_len - 22 - scan;
+
+        if (zip_u32(p) == ZIP_EOCD_SIG) {
+            eocd = p;
+            break;
+        }
+    }
+    if (!eocd)
+        return NULL;
+
+    count = zip_u16(eocd + 10);
+    cd_size = zip_u32(eocd + 12);
+    cd_off = zip_u32(eocd + 16);
+    if (cd_off > zip_len || cd_size > zip_len - cd_off)
+        return NULL;
+
+    at = cd_off;
+    for (i = 0; i < count; i++) {
+        const UCHAR *e = base + at;
+        WORD method, name_len, extra_len, comment_len;
+        DWORD csize, usize, local_off, crc;
+
+        if (at + 46 > cd_off + cd_size)
+            return NULL;
+        if (zip_u32(e) != ZIP_CEN_SIG)
+            return NULL;
+
+        method      = zip_u16(e + 10);
+        crc         = zip_u32(e + 16);
+        csize       = zip_u32(e + 20);
+        usize       = zip_u32(e + 24);
+        name_len    = zip_u16(e + 28);
+        extra_len   = zip_u16(e + 30);
+        comment_len = zip_u16(e + 32);
+        local_off   = zip_u32(e + 42);
+
+        if (at + 46 + name_len > cd_off + cd_size)
+            return NULL;
+
+        if (name_len == want_len && memcmp(e + 46, want, want_len) == 0) {
+            const UCHAR *loc = base + local_off;
+            const UCHAR *data;
+            WORD loc_name_len, loc_extra_len;
+            void *out;
+
+            /* The local header repeats the name and carries its own extra
+             * field, which is allowed to differ in length from the one in the
+             * directory. Taking the directory's length here is the classic way
+             * to land in the middle of the data. */
+            if (local_off > zip_len || zip_len - local_off < 30)
+                return NULL;
+            if (zip_u32(loc) != ZIP_LOC_SIG)
+                return NULL;
+            loc_name_len = zip_u16(loc + 26);
+            loc_extra_len = zip_u16(loc + 28);
+            data = loc + 30 + loc_name_len + loc_extra_len;
+            if ((DWORD)(data - base) > zip_len || csize > zip_len - (DWORD)(data - base))
+                return NULL;
+
+            if (!usize || usize > 64 * 1024 * 1024)
+                return NULL;
+            out = malloc(usize);
+            if (!out)
+                return NULL;
+
+            if (method == ZIP_STORED && csize == usize) {
+                memcpy(out, data, usize);
+            } else if (method == ZIP_DEFLATE
+                       && inflate_stored_only(data, csize, (UCHAR *)out, usize)) {
+                /* Nothing more to do, it is already copied out. */
+            } else {
+                launcher_log("update: %s is compressed in the archive, which this cannot "
+                             "read. The release was not built by pack.ps1.", want);
+                free(out);
+                return NULL;
+            }
+
+            if (zip_crc32(out, usize) != crc) {
+                launcher_log("update: %s does not match its own checksum inside the "
+                             "archive", want);
+                free(out);
+                return NULL;
+            }
+
+            *out_len = usize;
+            return out;
+        }
+
+        at += 46 + name_len + extra_len + comment_len;
+    }
+    return NULL;
+}
+
 static char g_dir[MAX_PATH];
 static char g_self[PATHBUF];
 static char g_hlsw_real[PATHBUF];
@@ -1064,12 +1322,13 @@ static char g_hlsw_real[PATHBUF];
  * or a GitHub outage cannot keep HLSW from starting. */
 static DWORD WINAPI check_update(LPVOID unused)
 {
-    char have_text[32], tag[64], sha_dll[65], sha_exe[65];
+    char have_text[32], tag[64], sha_zip[65], zip_name[128];
     char *json;
-    wchar_t url_dll[512], url_exe[512], heading[128], detail[1024];
+    wchar_t url_zip[512], heading[128], detail[1024];
     int have[4], want[4];
-    DWORD len = 0, dll_len = 0, exe_len = 0;
+    DWORD len = 0, zip_len = 0, dll_len = 0, exe_len = 0;
     int can_install, answer;
+    void *zip = NULL;
     void *dll_data = NULL, *exe_data = NULL;
     char dll_path[PATHBUF];
     HWND parent;
@@ -1100,13 +1359,13 @@ static DWORD WINAPI check_update(LPVOID unused)
         return 0;
     }
 
-    /* A release that ships only the archive can still be pointed at, it just
-     * cannot be installed from here. Both files have to be there and both have
-     * to carry a hash, or the offer is not made at all. */
-    can_install = release_asset(json, "hlswfix.dll", url_dll,
-                                sizeof(url_dll) / sizeof(url_dll[0]), sha_dll, sizeof(sha_dll))
-               && release_asset(json, "hlswfix.exe", url_exe,
-                                sizeof(url_exe) / sizeof(url_exe[0]), sha_exe, sizeof(sha_exe));
+    /* An older release, or one put together by hand, may carry no archive or
+     * one without a published hash. Then it can be pointed at and not
+     * installed, which is what the dialog says. */
+    can_install = release_archive_name(json, zip_name, sizeof(zip_name))
+               && release_asset(json, zip_name, url_zip,
+                                sizeof(url_zip) / sizeof(url_zip[0]),
+                                sha_zip, sizeof(sha_zip));
     free(json);
 
     launcher_log("update: %s is available, running %s%s", tag, have_text,
@@ -1124,9 +1383,10 @@ static DWORD WINAPI check_update(LPVOID unused)
                L"switch it off.",
                have_text,
                can_install
-                   ? L"Installing replaces two files, hlswfix.dll and the launcher. HLSW can "
-                     L"stay open; the new version takes over the next time it starts.\n\n"
-                   : L"That release does not carry the two files on their own, so it has to be "
+                   ? L"Installing downloads that release and replaces two files, hlswfix.dll "
+                     L"and the launcher. HLSW can stay open; the new version takes over the "
+                     L"next time it starts.\n\n"
+                   : L"That release carries no archive this can install from, so it has to be "
                      L"downloaded from the page.\n\n");
     detail[1023] = 0;
 
@@ -1142,17 +1402,33 @@ static DWORD WINAPI check_update(LPVOID unused)
     if (answer != ANSWER_INSTALL)
         return 0;
 
-    dll_data = fetch_verified(url_dll, sha_dll, &dll_len);
+    zip = fetch_verified(url_zip, sha_zip, &zip_len);
+    if (!zip) {
+        if (ask(parent, L"The update could not be downloaded",
+                L"Either the download did not finish, or what arrived did not match the "
+                L"hash published with the release. Nothing on this machine was changed.\n\n"
+                L"The release page has the same archive to download by hand.",
+                0, 1) == ANSWER_PAGE)
+            ShellExecuteA(NULL, "open", RELEASE_PAGE, NULL, NULL, SW_SHOWNORMAL);
+        return 0;
+    }
+
+    /* Both are taken out before either is written, so a broken archive cannot
+     * leave one file replaced and the other not. */
+    dll_data = zip_extract(zip, zip_len, "hlswfix.dll", &dll_len);
     if (dll_data)
-        exe_data = fetch_verified(url_exe, sha_exe, &exe_len);
+        exe_data = zip_extract(zip, zip_len, "hlswfix.exe", &exe_len);
+    free(zip);
+    zip = NULL;
 
     if (!dll_data || !exe_data) {
         free(dll_data);
         free(exe_data);
-        if (ask(parent, L"The update could not be downloaded",
-                L"Either the download did not finish, or what arrived did not match the "
-                L"hash published with the release. Nothing on this machine was changed.\n\n"
-                L"The release page has the same files to download by hand.",
+        if (ask(parent, L"The update could not be unpacked",
+                L"The archive arrived complete and matched its published hash, but the two "
+                L"files this installs are not in it in the form it expects. Nothing on this "
+                L"machine was changed.\n\n"
+                L"The release page has the archive to install by hand.",
                 0, 1) == ANSWER_PAGE)
             ShellExecuteA(NULL, "open", RELEASE_PAGE, NULL, NULL, SW_SHOWNORMAL);
         return 0;
