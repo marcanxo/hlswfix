@@ -16,7 +16,7 @@ whole of what it touches.
 
 1. Install HLSW first. If you do not have it, see [Getting HLSW](#getting-hlsw)
    below.
-2. Download `hlswfix-1.6.1.0.zip` from the [releases page][releases]. Not the
+2. Download `hlswfix-1.7.0.0.zip` from the [releases page][releases]. Not the
    green **Code** button: that gives you the sources without the built files.
 3. Unpack it anywhere and close HLSW if it is running.
 4. Double click **`install.cmd`**.
@@ -260,7 +260,7 @@ Everything in `hlswfix.ini` is optional, including the file itself. The fix
 needs no configuration. The comments in the file explain each setting; three
 are worth repeating here.
 
-**`title_version`** is why the title bar says **HLSW v1.6.1.0**. The developers'
+**`title_version`** is why the title bar says **HLSW v1.7.0.0**. The developers'
 last release was 1.4.0.5 in 2011, and the new number says at a glance that this
 HLSW has the fix in it. You do not have to set it: with the line left out, the
 version of the fix itself is shown, read from its own file, so it stays right
@@ -285,8 +285,9 @@ rights and without a window, and is stopped again with HLSW. It does not have to
 be ssh. Treat `hlswfix.ini` like a startup entry: whoever can write it can run
 anything as you.
 
-**`block_home_calls`**, **`skip_login_screen`** and **`hide_duplicate_info`** are
-all on by default and each has a section of its own below.
+**`block_home_calls`**, **`skip_login_screen`**, **`hide_duplicate_info`**,
+**`fix_dead_links`** and **`update_check`** are all on by default and each has a
+section of its own below.
 
 **`log`** writes `hlswfix.log` next to `hlsw.exe`. Plain text, appended, never
 rotated. At `1` it names the servers involved, at `2` it holds the packets
@@ -317,6 +318,24 @@ Windows Defender was run against the release archive and each file in it, with
 current signatures, and found nothing. Another scanner may still object on
 sight rather than on behaviour.
 
+The updater adds a second thing scanners dislike: downloading a file and putting
+it in place of one that is already there. On its own that is unremarkable, and
+next to dll injection in the same program it is closer to the shape of a
+downloader than either half would be alone. It is worth knowing why the usual
+comparison does not carry: other programs offer exactly this dialog and are not
+flagged for it, but they are ordinary programs that hand a downloaded installer
+to Windows. This one injects. Nothing about that is hidden here, the code is in
+[src/launcher.c](src/launcher.c) under `check_update`, and `update_check = 0`
+switches the whole thing off.
+
+Code signing would settle most of this and is not realistically available: an
+ordinary certificate costs a few hundred a year and still starts without
+reputation, the kind that satisfies SmartScreen immediately wants a company
+behind it, and the cheap modern route wants a verifiable business history that a
+hobby project does not have. So the honest position is that this may be flagged,
+that the sources are here to read, and that a false positive can be reported to
+Microsoft and usually clears within a day or two.
+
 The release page lists the SHA-256 of the archive and of every file in it, so
 you can check that what you downloaded is what was published. Note that a build
 from source will not reproduce those bytes exactly, because the compiler stamps
@@ -325,7 +344,7 @@ against them.
 
 ## Building it yourself
 
-Nothing here is hidden from you. It is about 1500 lines of C in [src](src) and
+Nothing here is hidden from you. It is about 3600 lines of C in [src](src) and
 it builds in a few seconds:
 
     build.cmd
@@ -342,6 +361,95 @@ an address that does not exist over there. A portable MinGW-w64 i686 toolchain
 unpacks anywhere and needs no installation. Point `MINGW` at its `bin` folder,
 or put `gcc` on the PATH. Output lands in `build\`, and `pack.ps1` assembles the
 release archive from it.
+
+## Links that go nowhere
+
+Every link in HLSW's interface points at `hlsw.org` or `hlsw.net`, and not one
+of them leads anywhere any more. Checked on 2026-08-19: `wiki.hlsw.org` serves
+the bare Apache default page and answers 404 for every article, the homepage,
+the registration form and the Sentinel lookup answer 403, and nothing under
+`hlsw.net` answers at all. There are 180 wiki links in `cfg\Games.cfg` and
+`cfg\AddOns.cfg` alone, one per game and per server addon, which is why the
+status bar shows a dead address whenever the mouse passes over one.
+
+Deleting them would be the easy answer and the wrong one, because most of what
+they point at still exists. The wiki moved from `hlsw.org` to `hlsw.net` before
+it went dark, and the Internet Archive kept the `.net` copy. Of those 180 pages,
+**2 are archived under the .org name and 136 under the .net one**, which is the
+whole difference between a dead link and a working one. So a wiki link is
+rewritten to the `.net` name and handed to the archive, and the documentation
+works again after fifteen years.
+
+Two links get better than that. **Steam Community** in the right click menu on a
+player went through `www.hlsw.org/steamprofile/<id>/`, which was HLSW's own
+redirect to Steam and is now a 403. The account id is right there in the
+address, so that click goes straight to `steamcommunity.com` instead, with the
+old `STEAM_0:1:...` form converted to the 64 bit id a profile address wants.
+
+One kind of link is deliberately left broken. An address that looks up one
+particular server or player, the register link under a server and the Sentinel
+entries, keeps the address it had and fails the way it already did. No crawler
+in 2011 had reason to fetch the page for this server or that account, so the
+archive would answer every one of them with its own "not archived" notice, and a
+link that plainly fails is more honest than one that leads to a page explaining
+it has nothing.
+
+Everything else is handed to the archive under its own address and shows the
+page as it was.
+
+The status bar is rewritten as well, so what it shows before you click is where
+the click will actually go. Nothing here guesses at what a link means; only the
+address is read. `fix_dead_links = 0` leaves every link exactly as HLSW wrote
+it, dead ends included.
+
+Two entry points carry this: `ShellExecuteW` and `ShellExecuteExW`, the only two
+HLSW imports from `SHELL32`. It uses no WinINet and no urlmon, so there is
+nowhere else for a link to leave by.
+
+## Updating itself
+
+When HLSW starts, the launcher asks GitHub whether there is a newer hlswfix. If
+there is, one dialog appears with three ways out: install it, open the release
+page, or not now.
+
+This is the one place where the fix does what it stops HLSW from doing, so it is
+worth saying plainly what the difference is:
+
+| | HLSW | this |
+|---|---|---|
+| how often | every five seconds, forever | once, when HLSW starts |
+| where | `s9b.hlsw.org`, which answers nothing | `api.github.com`, where you got this |
+| what it sends | ten bytes, undocumented | a request for one file, and the word `hlswfix` |
+| can you stop it | no | `update_check = 0` |
+| written up | in a licence nobody reads | here, and in `hlswfix.ini` |
+
+It is on rather than off on purpose, and that is worth defending rather than
+hiding. A check nobody switches on tells nobody anything, and there is nothing
+else that would: the version in the title bar is read out of the file itself, so
+it is always right about what is running and never about what exists.
+
+The check runs on a thread of its own, so a slow network, a proxy that never
+answers or a GitHub outage cannot keep HLSW from starting. Nothing is sent about
+you or this machine: no version, no account, no identifier, nothing that would
+tell two users apart.
+
+Installing replaces two files, `hlswfix.dll` and the launcher. Both are checked
+against the SHA-256 that GitHub publishes for the release before anything on
+disk is touched, and if either step fails everything is put back as it was. HLSW
+can stay open while it happens: a file that is in use can still be renamed out
+of the way on Windows, only not deleted, so the replaced copies sit as `.old`
+until the launcher clears them at its next start. The new version takes over the
+next time HLSW starts.
+
+`hlswfix.ini` is never touched. It is the one file you edit, the installer has
+always left it alone, and an updater that overwrote it would undo every setting
+on the machine it was meant to help.
+
+**What the hash check does and does not prove.** It catches a download that
+arrived damaged or was interfered with on the way. It cannot catch a release
+published from an account that is no longer in the right hands, because the file
+and its hash come from the same place. Nothing short of code signing would, and
+that is discussed under *Antivirus and SmartScreen*.
 
 ## HLSW reports to servers that are no longer its own
 

@@ -59,10 +59,12 @@
 #include <ws2tcpip.h>
 #include <windows.h>
 #include <tlhelp32.h>
+#include <shellapi.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
+#include <wchar.h>
 
 /* Room for a full length directory plus one of the file names appended to it,
  * so that none of the paths built below can be cut short. */
@@ -267,6 +269,12 @@ static int             g_refuse_held = 1;
  * string that flip back and forth for as long as the server is selected. */
 static int             g_hide_duplicate_info = 1;
 
+/* On by default. Every link in HLSW's interface points at hlsw.org or
+ * hlsw.net, and not one of them leads anywhere any more. See rewrite_dead_link
+ * for what happens to them instead, and why deleting them would be the wrong
+ * answer. */
+static int             g_fix_links = 1;
+
 #define MAX_HOME_IPS 8
 static ULONG           g_home_ips[MAX_HOME_IPS];
 static int             g_home_ip_count;
@@ -282,6 +290,10 @@ static int is_home_address(const struct sockaddr_in *a);
  * case the hook is not even installed. */
 static wchar_t         g_title_version[32];
 static BOOL (WINAPI *real_SetWindowTextW)(HWND, LPCWSTR);
+
+static HINSTANCE (WINAPI *real_ShellExecuteW)(HWND, LPCWSTR, LPCWSTR, LPCWSTR,
+                                              LPCWSTR, INT);
+static BOOL (WINAPI *real_ShellExecuteExW)(SHELLEXECUTEINFOW *);
 
 /* The way back to the original behaviour: normally a trampoline left behind by
  * install_detour, or the address that stood in an import table when only the
@@ -1089,6 +1101,370 @@ static int WSAAPI my_WSARecv(SOCKET s, LPWSABUF bufs, DWORD count, LPDWORD recvd
     return rc;
 }
 
+/* ------------------------------------------------------------- dead links */
+
+/* Where a link in HLSW's interface goes was decided when hlsw.org was still
+ * somebody's website. Measured on 2026-08-19, none of it answers any more:
+ * wiki.hlsw.org serves the bare Apache default page and 404s every article,
+ * the homepage, the registration form and the Sentinel lookup all answer 403,
+ * and nothing under hlsw.net answers at all. That is 180 wiki links in
+ * cfg\Games.cfg and cfg\AddOns.cfg alone, one per game and per server addon,
+ * plus a handful built into hlsw.exe itself.
+ *
+ * Removing them is the obvious answer and the wrong one, because most of what
+ * they point at still exists. The wiki moved from hlsw.org to hlsw.net before
+ * it went dark, and the Internet Archive kept the .net copy: of those 180
+ * pages, 2 are archived under the .org name and 136 under the .net one.
+ * Rewriting the host before handing the address to the archive is the whole
+ * difference between a dead link and a working one.
+ *
+ * The player context menu holds a second case worth repairing rather than
+ * burying. "Steam Community" goes to www.hlsw.org/steamprofile/<id>/, which
+ * was HLSW's own redirect to Steam, and the account id is right there in the
+ * address. That click can go to Steam directly.
+ *
+ * Everything else is handed to the archive under its own address and shows
+ * either the page as it was or the archive's own "not archived" notice. Both
+ * are more use than a server that refuses.
+ *
+ * Nothing here is a guess about what a link means. Only the address is read. */
+
+#define ARCHIVE_PREFIX L"https://web.archive.org/web/2011/"
+#define STEAM_PROFILE  L"https://steamcommunity.com/profiles/"
+#define WIKI_HOST      L"http://wiki.hlsw.net"
+
+/* Tail match on the host, so s9b, wiki, sentinel and every other name the
+ * developers ever used is caught without listing them. The dot is required, or
+ * a host like notahlsw.org would match too. The same rule as is_home_domain,
+ * on wide characters and on a length rather than a terminator, because the
+ * host sits in the middle of the address. */
+static int is_home_host_w(const wchar_t *host, size_t len)
+{
+    static const wchar_t *domains[2] = { L"hlsw.net", L"hlsw.org" };
+    int i;
+
+    for (i = 0; i < 2; i++) {
+        size_t d = wcslen(domains[i]);
+
+        if (len < d)
+            continue;
+        if (_wcsnicmp(host + len - d, domains[i], (int)d) != 0)
+            continue;
+        if (len == d || host[len - d - 1] == L'.')
+            return 1;
+    }
+    return 0;
+}
+
+/* Appends and stops at the end of the buffer, so a long address is cut short
+ * rather than written past. */
+static void append_w(wchar_t *out, size_t cap, const wchar_t *add)
+{
+    size_t have = wcslen(out);
+
+    if (have + 1 >= cap)
+        return;
+    lstrcpynW(out + have, add, (int)(cap - have));
+}
+
+/* Case insensitive search, which the standard library has no wide version of. */
+static const wchar_t *wcsstr_i(const wchar_t *hay, const wchar_t *needle)
+{
+    size_t n = wcslen(needle);
+
+    if (!n)
+        return hay;
+    for (; *hay; hay++)
+        if (_wcsnicmp(hay, needle, (int)n) == 0)
+            return hay;
+    return NULL;
+}
+
+static void u64_to_wide(unsigned long long v, wchar_t *out)
+{
+    wchar_t tmp[24];
+    int i = 0, j = 0;
+
+    if (!v) {
+        out[0] = L'0';
+        out[1] = 0;
+        return;
+    }
+    while (v && i < 23) {
+        tmp[i++] = (wchar_t)(L'0' + (v % 10));
+        v /= 10;
+    }
+    while (i > 0)
+        out[j++] = tmp[--i];
+    out[j] = 0;
+}
+
+/* STEAM_X:Y:Z is how every tool of that era wrote an account: the number split
+ * in two, with Y as its lowest bit. What a Steam profile address wants is the
+ * 64 bit form, 76561197960265728 + Z * 2 + Y.
+ *
+ * Written out rather than handed to printf, so that the digits do not depend
+ * on which runtime the build lands on. */
+static int steam_id64_w(const wchar_t *gid, size_t len, wchar_t *out, size_t cap)
+{
+    unsigned long long value[3] = { 0, 0, 0 };
+    unsigned long long y, z;
+    size_t i = 0;
+    int fields = 0;
+
+    if (cap < 24)
+        return 0;
+    if (len > 6 && _wcsnicmp(gid, L"STEAM_", 6) == 0) {
+        gid += 6;
+        len -= 6;
+    }
+
+    while (i < len && fields < 3) {
+        if (gid[i] < L'0' || gid[i] > L'9')
+            return 0;
+        while (i < len && gid[i] >= L'0' && gid[i] <= L'9') {
+            value[fields] = value[fields] * 10 + (unsigned)(gid[i] - L'0');
+            if (value[fields] > 0xFFFFFFFFULL)
+                return 0;
+            i++;
+        }
+        fields++;
+        if (i < len && gid[i] == L':')
+            i++;
+        else
+            break;
+    }
+    if (i != len)
+        return 0;
+
+    if (fields == 3) {
+        y = value[1];
+        z = value[2];
+    } else if (fields == 2) {
+        y = value[0];
+        z = value[1];
+    } else {
+        return 0;
+    }
+    if (y > 1)
+        return 0;
+
+    u64_to_wide(76561197960265728ULL + z * 2 + y, out);
+    return 1;
+}
+
+/* True for an address that looks up one particular server or player.
+ *
+ * These are the ones the archive can never help with, and sending them there
+ * would be worse than leaving them alone: a crawler in 2011 had no reason to
+ * fetch the page for this server or that account, so the archive answers every
+ * one of them with its own "not archived" notice. A link that plainly fails is
+ * more honest than one that leads to a page explaining that it has nothing.
+ *
+ * So these keep the address HLSW gave them and fail the way they already did.
+ * The one exception is above this: the Steam profile redirect, which is also a
+ * lookup for one player, but has somewhere real to go instead. */
+static int is_per_entity_lookup(const wchar_t *url)
+{
+    static const wchar_t *paths[4] = {
+        L"/gameserver/",   /* www.hlsw.org, one server, with the register form */
+        L"/profile/",      /* www.hlsw.org, one account */
+        L"/player/",       /* sentinel.hlsw.org, one account */
+        L"/server/"        /* sentinel.hlsw.org, one server */
+    };
+    int i;
+
+    for (i = 0; i < 4; i++)
+        if (wcsstr_i(url, paths[i]))
+            return 1;
+    return 0;
+}
+
+/* Fills out with where the address should go instead, and returns whether it
+ * did. Anything that is not an http address on one of the two dead domains is
+ * left completely alone. */
+static int rewrite_dead_link(const wchar_t *url, wchar_t *out, size_t cap)
+{
+    const wchar_t *host, *rest, *id;
+    size_t host_len;
+
+    if (!g_fix_links || !url || cap < 64)
+        return 0;
+
+    while (*url == L' ' || *url == L'\t')
+        url++;
+
+    if (_wcsnicmp(url, L"http://", 7) == 0)
+        host = url + 7;
+    else if (_wcsnicmp(url, L"https://", 8) == 0)
+        host = url + 8;
+    else
+        return 0;
+
+    rest = host;
+    while (*rest && *rest != L'/' && *rest != L':' && *rest != L'?')
+        rest++;
+    host_len = (size_t)(rest - host);
+    if (!is_home_host_w(host, host_len))
+        return 0;
+
+    out[0] = 0;
+
+    /* The wiki, moved to the name it died under and then handed to the
+     * archive. Anything after the host travels unchanged, including the
+     * index.php?title= form a few of the links use. */
+    if (host_len > 5 && _wcsnicmp(host, L"wiki.", 5) == 0) {
+        append_w(out, cap, ARCHIVE_PREFIX);
+        append_w(out, cap, WIKI_HOST);
+        append_w(out, cap, *rest ? rest : L"/");
+        return 1;
+    }
+
+    /* HLSW's own redirect to a Steam profile, with the account id lifted out
+     * of the middle of it. */
+    id = wcsstr_i(url, L"/steamprofile/");
+    if (id) {
+        const wchar_t *end;
+        wchar_t id64[24];
+
+        id += 14;
+        end = id;
+        while (*end && *end != L'/' && *end != L'?')
+            end++;
+        if (end > id && steam_id64_w(id, (size_t)(end - id), id64, 24)) {
+            append_w(out, cap, STEAM_PROFILE);
+            append_w(out, cap, id64);
+            return 1;
+        }
+        out[0] = 0;
+    }
+
+    if (is_per_entity_lookup(url))
+        return 0;
+
+    append_w(out, cap, ARCHIVE_PREFIX);
+    append_w(out, cap, url);
+    return 1;
+}
+
+/* The same rewriting, but for a line of text that has an address somewhere in
+ * it rather than being nothing but one.
+ *
+ * This exists because what HLSW puts in its status bar when the mouse passes
+ * over a link was never established, only assumed: it may be the bare address,
+ * or the address with something in front of it. Rather than find out and then
+ * depend on the answer, every address in the line is found and replaced where
+ * it stands, and everything around it travels unchanged. Then it does not
+ * matter which of the two it turns out to be.
+ *
+ * An address ends at whitespace or at one of the characters that cannot appear
+ * in one, which is where the surrounding text starts again. */
+static int rewrite_text_links(const wchar_t *in, wchar_t *out, size_t cap)
+{
+    size_t at = 0;
+    int changed = 0;
+
+    if (!g_fix_links || !in || cap < 64)
+        return 0;
+
+    out[0] = 0;
+    while (*in) {
+        const wchar_t *url = NULL;
+
+        if (_wcsnicmp(in, L"http://", 7) == 0)
+            url = in;
+        else if (_wcsnicmp(in, L"https://", 8) == 0)
+            url = in;
+
+        if (url) {
+            wchar_t one[1024], fixed[1024];
+            const wchar_t *end = url;
+            size_t n;
+
+            while (*end && *end > L' ' && *end != L'"' && *end != L'<' && *end != L'>')
+                end++;
+            n = (size_t)(end - url);
+            if (n < sizeof(one) / sizeof(one[0])) {
+                lstrcpynW(one, url, (int)n + 1);
+                if (rewrite_dead_link(one, fixed, 1024)) {
+                    append_w(out, cap, fixed);
+                    at = wcslen(out);
+                    in = end;
+                    changed = 1;
+                    continue;
+                }
+            }
+            /* Not one of ours, or too long to hold: copy it across as it is,
+             * in one go, so the scan does not start again in the middle of it
+             * and find something that only looks like an address. */
+            if (at + n + 1 < cap) {
+                lstrcpynW(out + at, url, (int)n + 1);
+                at += n;
+                out[at] = 0;
+            }
+            in = end;
+            continue;
+        }
+
+        if (at + 2 < cap) {
+            out[at++] = *in;
+            out[at] = 0;
+        }
+        in++;
+    }
+    return changed;
+}
+
+/* Wide text in a log file that is written as plain bytes. On a conversion that
+ * does not fit, WideCharToMultiByte writes nothing and leaves the buffer as it
+ * found it, so the terminator is set by hand either way. */
+static void log_link(const char *what, const wchar_t *from, const wchar_t *to)
+{
+    char a[600], b[600];
+
+    if (g_logging < 1)
+        return;
+    if (WideCharToMultiByte(CP_ACP, 0, from, -1, a, sizeof(a), NULL, NULL) == 0)
+        a[0] = 0;
+    if (WideCharToMultiByte(CP_ACP, 0, to, -1, b, sizeof(b), NULL, NULL) == 0)
+        b[0] = 0;
+    dbg_log("%s %s -> %s", what, a, b);
+}
+
+static HINSTANCE WINAPI my_ShellExecuteW(HWND hwnd, LPCWSTR verb, LPCWSTR file,
+                                         LPCWSTR params, LPCWSTR dir, INT show)
+{
+    wchar_t fixed[1024];
+
+    if (rewrite_dead_link(file, fixed, 1024)) {
+        log_link("opening", file, fixed);
+        return real_ShellExecuteW(hwnd, verb, fixed, params, dir, show);
+    }
+    return real_ShellExecuteW(hwnd, verb, file, params, dir, show);
+}
+
+/* The structure is copied rather than edited, because it belongs to the caller
+ * and the address in it may well be a string constant in a read only section.
+ * What the call reports back is copied into the original, since that is where
+ * the caller looks for it. */
+static BOOL WINAPI my_ShellExecuteExW(SHELLEXECUTEINFOW *info)
+{
+    wchar_t fixed[1024];
+    SHELLEXECUTEINFOW copy;
+    BOOL ok;
+
+    if (!info || !rewrite_dead_link(info->lpFile, fixed, 1024))
+        return real_ShellExecuteExW(info);
+
+    log_link("opening", info->lpFile, fixed);
+    copy = *info;
+    copy.lpFile = fixed;
+    ok = real_ShellExecuteExW(&copy);
+    info->hInstApp = copy.hInstApp;
+    info->hProcess = copy.hProcess;
+    return ok;
+}
+
 /* Rewrites the version in the window title, which HLSW builds from its own
  * version resource. Done here rather than by editing that resource, so the
  * program's own files stay exactly as they were shipped and the change travels
@@ -1125,6 +1501,42 @@ static BOOL WINAPI my_SetWindowTextW(HWND hwnd, LPCWSTR text)
             dbg_log("swallowed our own noise: %s", shown);
         }
         return TRUE;
+    }
+
+    /* The same link shown rather than followed. HLSW writes the address of
+     * whatever the mouse is over into its status bar, and without this the
+     * footer would go on advertising a host that has not answered in years
+     * while the click quietly went somewhere that works. */
+    if (g_fix_links && text) {
+        wchar_t fixed[1024];
+
+        if (rewrite_text_links(text, fixed, 1024)) {
+            /* Only when it is not the line that was logged last.
+             *
+             * Measured, not guessed: HLSW rewrites its status bar while the
+             * mouse merely rests on a link, dozens of times a second with the
+             * same text every time. One session of hovering produced 884 of
+             * 1160 lines in the log, all identical, and everything worth
+             * reading was buried under them. The rewriting itself still runs
+             * every time, because HLSW is told the text every time; it is only
+             * the record of it that is worth keeping once.
+             *
+             * The comparison is against the last line written and nothing
+             * more, so a link visited, left and visited again is recorded
+             * again. Only HLSW's own interface thread writes here. */
+            static wchar_t last[1024];
+
+            if (wcscmp(last, text) != 0) {
+                lstrcpynW(last, text, 1024);
+                log_link("status bar", text, fixed);
+            }
+            return real_SetWindowTextW(hwnd, fixed);
+        }
+        /* Named a dead host and was left alone anyway. That should not happen,
+         * and if it ever does this is the line that says so instead of the
+         * feature simply appearing not to work. */
+        if (g_logging >= 2 && (wcsstr_i(text, L"hlsw.org") || wcsstr_i(text, L"hlsw.net")))
+            log_link("status bar, not rewritten", text, L"(unchanged)");
     }
 
     if (!text || wcsncmp(text, L"HLSW v", 6) != 0)
@@ -1541,9 +1953,56 @@ static void *patch_everywhere(WORD ordinal, const char *func, void *replacement)
     return real;
 }
 
+/* The same fallback for a function that is not winsock. Kept apart from
+ * patch_everywhere rather than folded into it, because that one tries both
+ * winsock libraries in turn and would need a special case for every other
+ * library added to it.
+ *
+ * Worth knowing about its reach here: HLSW is started suspended and injected
+ * into before its own imports are resolved, so an entry patched in hlsw.exe
+ * can still be written over by the loader afterwards. That makes this a
+ * genuinely weaker route for the shell functions than for anything else, and
+ * it is only ever reached when the detour itself could not be placed. */
+static void *patch_import_everywhere(const char *dll, const char *func, void *replacement)
+{
+    HANDLE snap;
+    MODULEENTRY32 me;
+    void *real = NULL;
+
+    snap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, GetCurrentProcessId());
+    if (snap == INVALID_HANDLE_VALUE)
+        return NULL;
+
+    me.dwSize = sizeof(me);
+    if (Module32First(snap, &me)) {
+        do {
+            void *old;
+
+            /* Never inside the library that owns the function, or the hook
+             * would reach its own replacement and recurse. */
+            if (me.hModule == g_self || _stricmp(me.szModule, dll) == 0)
+                continue;
+            old = patch_import_in(me.hModule, dll, 0, func, replacement);
+            if (old) {
+                if (!real)
+                    real = old;
+                if (g_logging)
+                    dbg_log("  patched %s in %s", func, me.szModule);
+            }
+        } while (Module32Next(snap, &me));
+    }
+    CloseHandle(snap);
+    return real;
+}
+
 /* ---------------------------------------------------------------- detours */
 
-#define MAX_DETOURS 16
+/* Two entries per function, because a name can live in both winsock
+ * libraries with a different implementation behind each. Sized with room to
+ * spare: at sixteen this table was two short of holding the shell entry points
+ * as well, and running out of it is the kind of failure that shows up as a
+ * feature quietly not working. */
+#define MAX_DETOURS 32
 static void *g_detoured[MAX_DETOURS];
 static int   g_detour_count;
 
@@ -1577,8 +2036,12 @@ static void *install_detour(void *target, void *replacement)
     BYTE *tramp;
     DWORD prot;
 
-    if (!t || already_detoured(t) || g_detour_count >= MAX_DETOURS)
+    if (!t || already_detoured(t))
         return NULL;
+    if (g_detour_count >= MAX_DETOURS) {
+        dbg_log("no room left to redirect %p, raise MAX_DETOURS", target);
+        return NULL;
+    }
     if (!(t[0] == 0x8B && t[1] == 0xFF && t[2] == 0x55 && t[3] == 0x8B && t[4] == 0xEC))
         return NULL;
 
@@ -1766,6 +2229,8 @@ static void load_config(HMODULE self)
             g_skip_login = from_port ? 1 : 0;
         } else if (sscanf(p, "hide_duplicate_info = %u", &from_port) == 1) {
             g_hide_duplicate_info = from_port ? 1 : 0;
+        } else if (sscanf(p, "fix_dead_links = %u", &from_port) == 1) {
+            g_fix_links = from_port ? 1 : 0;
         } else if (sscanf(p, "refuse_held_queries = %u", &from_port) == 1) {
             g_refuse_held = from_port ? 1 : 0;
         } else if (sscanf(p, "log = %u", &from_port) == 1) {
@@ -1853,11 +2318,37 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
     if (g_skip_login)
         turn_off_login_screen();
 
-    /* Two unrelated jobs share this hook: rewriting the version in the title,
-     * and swallowing the status bar lines our own refusals cause. Either reason
-     * alone is enough to install it, which is why the condition is not simply
+    /* Links into a world that is gone, sent to the Internet Archive instead,
+     * or straight to Steam where the address carries an account id. Both entry
+     * points are taken because a program of this age may use either, and
+     * because the one HLSW uses cannot be told from the outside. */
+    if (g_fix_links) {
+        real_ShellExecuteW = detour_in("SHELL32.dll", "ShellExecuteW",
+                                       (void *)my_ShellExecuteW);
+        if (!real_ShellExecuteW)
+            real_ShellExecuteW = patch_import_everywhere("SHELL32.dll", "ShellExecuteW",
+                                                         (void *)my_ShellExecuteW);
+
+        real_ShellExecuteExW = detour_in("SHELL32.dll", "ShellExecuteExW",
+                                         (void *)my_ShellExecuteExW);
+        if (!real_ShellExecuteExW)
+            real_ShellExecuteExW = patch_import_everywhere("SHELL32.dll", "ShellExecuteExW",
+                                                           (void *)my_ShellExecuteExW);
+
+        if (!real_ShellExecuteW && !real_ShellExecuteExW)
+            dbg_log("dead links stay dead: SHELL32 is not loaded here, or neither "
+                    "of its two entry points could be redirected");
+        else
+            dbg_log("dead links redirected: ShellExecuteW=%p ShellExecuteExW=%p",
+                    (void *)real_ShellExecuteW, (void *)real_ShellExecuteExW);
+    }
+
+    /* Three unrelated jobs share this hook: rewriting the version in the
+     * title, swallowing the status bar lines our own refusals cause, and
+     * rewriting the address the status bar shows for a link. Any one of them
+     * is enough to install it, which is why the condition is not simply
      * whether a title version is set. */
-    if (g_title_version[0] || g_refuse_held) {
+    if (g_title_version[0] || g_refuse_held || g_fix_links) {
         char shown[32];
 
         real_SetWindowTextW = detour_in("USER32.dll", "SetWindowTextW",

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Not the launcher's application manifest. This one is put in the executable
+  under resource id 2 and switched on by hand, for the moment the update
+  question is on the screen and for nothing else.
+
+  It is here for one reason: that question is asked with a task dialog, the
+  kind with a heading and command links rather than three cryptic buttons, and
+  TaskDialogIndirect exists only in version 6 of the common controls. Without
+  something declaring that dependency, a program is handed version 5, the entry
+  point is simply not there, and the dialog would quietly fall back to a
+  message box on every machine rather than on none.
+
+  Why not the ordinary way, as the application manifest under id 1: MinGW's
+  linker puts its own manifest there for every executable it builds, and a
+  second one at the same id is not merged but rejected, with ".rsrc merge
+  failure: multiple non-default manifests". Both then end up in the file.
+  Nothing here is worth breaking every build over, and the activation context
+  is the documented way to ask for version 6 without touching the manifest the
+  toolchain already wrote. See ask() in launcher.c.
+
+  Nothing about privileges is declared here on purpose. That belongs in the
+  application manifest, the linker's own already says asInvoker, and that is
+  the right answer: a program that replaces a file next to HLSW must not
+  quietly ask for administrator rights. If the folder is not writable, the
+  update says so and changes nothing.
+-->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <assemblyIdentity type="win32" name="hlswfix.taskdialog" version="1.0.0.0"
+                    processorArchitecture="*"/>
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity type="win32" name="Microsoft.Windows.Common-Controls"
+                        version="6.0.0.0" processorArchitecture="*"
+                        publicKeyToken="6595b64144ccf1df" language="*"/>
+    </dependentAssembly>
+  </dependency>
+</assembly>

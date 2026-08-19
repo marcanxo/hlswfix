@@ -59,11 +59,11 @@ if errorlevel 1 exit /b 1
 if errorlevel 1 exit /b 1
 
 echo Building hlswfix.dll
-"%GCC%" %CFLAGS% -shared -o "%OUT%\hlswfix.dll" "%SRC%\hlswfix.c" "%OUT%\hlswfix.dll.res" -lws2_32 -ladvapi32 -lversion
+"%GCC%" %CFLAGS% -shared -o "%OUT%\hlswfix.dll" "%SRC%\hlswfix.c" "%OUT%\hlswfix.dll.res" -lws2_32 -ladvapi32 -lversion -lshell32
 if errorlevel 1 exit /b 1
 
 echo Building hlswfix.exe
-"%GCC%" %CFLAGS% -mwindows -o "%OUT%\hlswfix.exe" "%SRC%\launcher.c" "%OUT%\hlswfix.exe.res" -lws2_32 -ladvapi32 -lversion
+"%GCC%" %CFLAGS% -mwindows -o "%OUT%\hlswfix.exe" "%SRC%\launcher.c" "%OUT%\hlswfix.exe.res" -lws2_32 -ladvapi32 -lversion -lwinhttp -lbcrypt -lshell32
 if errorlevel 1 exit /b 1
 
 del "%OUT%\hlswfix.dll.res" "%OUT%\hlswfix.exe.res" 2>nul

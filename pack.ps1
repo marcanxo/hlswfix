@@ -3,7 +3,7 @@
 #
 #   powershell -ExecutionPolicy Bypass -File pack.ps1 -Version 1.5.0
 
-param([string]$Version = '1.6.1.0')
+param([string]$Version = '1.7.0.0')
 
 $ErrorActionPreference = 'Stop'
 
@@ -37,3 +37,16 @@ Write-Host ""
 Get-ChildItem $stage | ForEach-Object {
     Write-Host ("  {0,-16} {1,10:N0}  {2}" -f $_.Name, $_.Length, (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())
 }
+
+# The updater downloads these two on their own, not the archive, so a release
+# without them can only be pointed at and not installed. GitHub publishes a
+# SHA-256 for every asset it is given, and that is what the updater checks the
+# download against before it replaces anything.
+Write-Host ""
+Write-Host "Upload the archive AND the two files beside it, or the updater has nothing to fetch:"
+Write-Host ""
+Write-Host ("  gh release create v{0} ``" -f $Version)
+Write-Host ("      `"{0}#hlswfix {1}`" ``" -f $zip, $Version)
+Write-Host ("      `"{0}`" ``" -f (Join-Path $build 'hlswfix.dll'))
+Write-Host ("      `"{0}`" ``" -f (Join-Path $build 'hlswfix.exe'))
+Write-Host ("      --title `"hlswfix {0}`" --notes-file <notes>" -f $Version)

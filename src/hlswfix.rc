@@ -16,6 +16,15 @@
 
 #include <winver.h>
 
+/* Version 6 of the common controls, for the update dialog and for nothing
+ * else. Deliberately id 2 and not the application manifest at id 1, which
+ * MinGW writes itself and will not have a second one beside it. The launcher
+ * switches this on around the dialog by hand; see ask() and the file itself
+ * for the whole story. The library gets none of this. */
+#ifndef BUILD_DLL
+2 24 "hlswfix.manifest"
+#endif
+
 #ifdef BUILD_DLL
 #define FILE_TYPE          VFT_DLL
 #define NAME_STRING        "hlswfix.dll"
@@ -27,8 +36,8 @@
 #endif
 
 1 VERSIONINFO
-FILEVERSION    1,6,1,0
-PRODUCTVERSION 1,6,1,0
+FILEVERSION    1,7,0,0
+PRODUCTVERSION 1,7,0,0
 FILEFLAGSMASK  VS_FFI_FILEFLAGSMASK
 FILEFLAGS      0
 FILEOS         VOS_NT_WINDOWS32
@@ -41,11 +50,11 @@ FILESUBTYPE    0
         {
             VALUE "CompanyName",      "marcanxo"
             VALUE "FileDescription",  DESCRIPTION_STRING
-            VALUE "FileVersion",      "1.6.1.0"
+            VALUE "FileVersion",      "1.7.0.0"
             VALUE "InternalName",     "hlswfix"
             VALUE "OriginalFilename", NAME_STRING
             VALUE "ProductName",      "hlswfix"
-            VALUE "ProductVersion",   "1.6.1.0"
+            VALUE "ProductVersion",   "1.7.0.0"
             VALUE "LegalCopyright",   "MIT licensed. Not connected with HLSW or its authors."
             VALUE "Comments",         "https://github.com/marcanxo/hlswfix"
         }

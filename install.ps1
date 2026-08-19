@@ -160,7 +160,14 @@ if ($Uninstall) {
         Write-Host "Nothing was taken over here, only removing files"
     }
 
-    foreach ($f in @($dll, $log, (Join-Path $Dir 'hlswfix.exe'))) {
+    # The .old copies are what an update leaves behind: the file that was in
+     # use at the time could be renamed but not deleted, and the launcher clears
+     # them at its next start. If that start never comes because this is the
+     # uninstall, they have to go here, or "exactly as it was" would not be true.
+    foreach ($f in @($dll, $log, (Join-Path $Dir 'hlswfix.exe'),
+                     (Join-Path $Dir 'hlswfix.dll.old'),
+                     (Join-Path $Dir 'hlswfix.exe.old'),
+                     (Join-Path $Dir 'hlsw.exe.old'))) {
         if (Test-Path $f) {
             Remove-Item $f -Force
             Write-Host ("removed {0}" -f (Split-Path -Leaf $f))
