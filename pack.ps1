@@ -46,7 +46,11 @@ Write-Host ""
 Write-Host "Upload the archive AND the two files beside it, or the updater has nothing to fetch:"
 Write-Host ""
 Write-Host ("  gh release create v{0} ``" -f $Version)
-Write-Host ("      `"{0}#hlswfix {1}`" ``" -f $zip, $Version)
+# No #label after the file name. gh turns that into a display label and GitHub
+# then shows the label instead of the file name, so 1.7.0.0 first went out
+# reading "hlswfix 1.7.0.0" with no extension, next to a README that tells
+# people to download the zip. The file name already says everything.
+Write-Host ("      `"{0}`" ``" -f $zip)
 Write-Host ("      `"{0}`" ``" -f (Join-Path $build 'hlswfix.dll'))
 Write-Host ("      `"{0}`" ``" -f (Join-Path $build 'hlswfix.exe'))
 Write-Host ("      --title `"hlswfix {0}`" --notes-file <notes>" -f $Version)
