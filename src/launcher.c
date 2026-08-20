@@ -1037,12 +1037,18 @@ static void end_v6(HANDLE h, ULONG_PTR cookie)
 #define ANSWER_INSTALL 101
 #define ANSWER_PAGE    102
 #define ANSWER_LATER   103
+#define ANSWER_RESTART 104
+
+/* Which question is being asked, which decides the buttons. */
+#define ASK_UPDATE  0   /* install it, open the page, not now */
+#define ASK_PAGE    1   /* open the page, not now */
+#define ASK_RESTART 2   /* start HLSW again, not now */
 
 /* Asks, in the shape the question deserves: what is new, what it will do, and
  * three plain ways out. Falls back to a message box where the task dialog is
  * not available, which needs comctl32 version 6 and therefore the manifest. */
 static int ask(HWND parent, const wchar_t *heading, const wchar_t *detail,
-               int offer_install, int icon_is_warning)
+               int kind, int icon_is_warning)
 {
     TASKDIALOGCONFIG cfg;
     TASKDIALOG_BUTTON buttons[3];
@@ -1058,28 +1064,44 @@ static int ask(HWND parent, const wchar_t *heading, const wchar_t *detail,
                   GetProcAddress(comctl, "TaskDialogIndirect") : NULL;
 
     if (!task_dialog) {
-        int r = MessageBoxW(parent, detail, L"hlswfix",
-                            (offer_install ? MB_YESNOCANCEL : MB_OKCANCEL) | MB_ICONINFORMATION);
+        UINT buttons_of = (kind == ASK_UPDATE) ? MB_YESNOCANCEL
+                        : (kind == ASK_RESTART) ? MB_YESNO : MB_OKCANCEL;
+        int r = MessageBoxW(parent, detail, L"hlswfix", buttons_of | MB_ICONINFORMATION);
 
         if (comctl)
             FreeLibrary(comctl);
         end_v6(ctx, cookie);
-        if (offer_install)
+        if (kind == ASK_UPDATE)
             return r == IDYES ? ANSWER_INSTALL : (r == IDNO ? ANSWER_PAGE : ANSWER_LATER);
+        if (kind == ASK_RESTART)
+            return r == IDYES ? ANSWER_RESTART : ANSWER_LATER;
         return r == IDOK ? ANSWER_PAGE : ANSWER_LATER;
     }
 
-    if (offer_install) {
-        buttons[n].nButtonID = ANSWER_INSTALL;
-        buttons[n].pszButtonText = text(STR_BTN_INSTALL);
+    if (kind == ASK_RESTART) {
+        buttons[n].nButtonID = ANSWER_RESTART;
+        buttons[n].pszButtonText = text(STR_BTN_RESTART);
+        n++;
+        /* Its own wording rather than the "not now" of the other questions.
+         * Nothing is postponed here: the update is done either way, and what
+         * somebody needs before choosing this is that the new version starts
+         * with HLSW the next time, not that they are putting something off. */
+        buttons[n].nButtonID = ANSWER_LATER;
+        buttons[n].pszButtonText = text(STR_BTN_RESTART_LATER);
+        n++;
+    } else {
+        if (kind == ASK_UPDATE) {
+            buttons[n].nButtonID = ANSWER_INSTALL;
+            buttons[n].pszButtonText = text(STR_BTN_INSTALL);
+            n++;
+        }
+        buttons[n].nButtonID = ANSWER_PAGE;
+        buttons[n].pszButtonText = text(STR_BTN_PAGE);
+        n++;
+        buttons[n].nButtonID = ANSWER_LATER;
+        buttons[n].pszButtonText = text(STR_BTN_LATER);
         n++;
     }
-    buttons[n].nButtonID = ANSWER_PAGE;
-    buttons[n].pszButtonText = text(STR_BTN_PAGE);
-    n++;
-    buttons[n].nButtonID = ANSWER_LATER;
-    buttons[n].pszButtonText = text(STR_BTN_LATER);
-    n++;
 
     memset(&cfg, 0, sizeof(cfg));
     cfg.cbSize = sizeof(cfg);
@@ -1093,7 +1115,8 @@ static int ask(HWND parent, const wchar_t *heading, const wchar_t *detail,
     cfg.pszContent = detail;
     cfg.cButtons = (UINT)n;
     cfg.pButtons = buttons;
-    cfg.nDefaultButton = offer_install ? ANSWER_INSTALL : ANSWER_PAGE;
+    cfg.nDefaultButton = (kind == ASK_UPDATE) ? ANSWER_INSTALL
+                       : (kind == ASK_RESTART) ? ANSWER_RESTART : ANSWER_PAGE;
 
     if (task_dialog(&cfg, &pressed, NULL, NULL) != S_OK)
         pressed = ANSWER_LATER;
@@ -1397,6 +1420,12 @@ static void *zip_extract(const void *zip, DWORD zip_len, const char *want, DWORD
     return NULL;
 }
 
+/* Set when the user asked for HLSW to be started again after an update, and
+ * when that was asked for, so that a request abandoned an hour ago does not
+ * turn into a surprise restart. */
+static volatile LONG  g_restart;
+static volatile DWORD g_restart_at;
+
 static char g_dir[MAX_PATH];
 static char g_self[PATHBUF];
 static char g_hlsw_real[PATHBUF];
@@ -1474,7 +1503,7 @@ static DWORD WINAPI check_update(LPVOID unused)
     /* Only now, once there is something to say. Waiting for HLSW's window
      * before there is a question would hold this thread up for nothing. */
     parent = hlsw_window();
-    answer = ask(parent, heading, detail, can_install, 0);
+    answer = ask(parent, heading, detail, can_install ? ASK_UPDATE : ASK_PAGE, 0);
 
     if (answer == ANSWER_PAGE) {
         ShellExecuteA(NULL, "open", RELEASE_PAGE, NULL, NULL, SW_SHOWNORMAL);
@@ -1486,7 +1515,7 @@ static DWORD WINAPI check_update(LPVOID unused)
     zip = fetch_verified(url_zip, sha_zip, &zip_len);
     if (!zip) {
         if (ask(parent, text(STR_DOWNLOAD_FAILED), text(STR_DOWNLOAD_FAILED_WHY),
-                0, 1) == ANSWER_PAGE)
+                ASK_PAGE, 1) == ANSWER_PAGE)
             ShellExecuteA(NULL, "open", RELEASE_PAGE, NULL, NULL, SW_SHOWNORMAL);
         return 0;
     }
@@ -1503,7 +1532,7 @@ static DWORD WINAPI check_update(LPVOID unused)
         free(dll_data);
         free(exe_data);
         if (ask(parent, text(STR_UNPACK_FAILED), text(STR_UNPACK_FAILED_WHY),
-                0, 1) == ANSWER_PAGE)
+                ASK_PAGE, 1) == ANSWER_PAGE)
             ShellExecuteA(NULL, "open", RELEASE_PAGE, NULL, NULL, SW_SHOWNORMAL);
         return 0;
     }
@@ -1528,7 +1557,27 @@ static DWORD WINAPI check_update(LPVOID unused)
     free(exe_data);
 
     launcher_log("update: %s installed", tag);
-    tell(parent, text(STR_INSTALLED), text(STR_INSTALLED_WHY), 0);
+
+    /* The update is complete either way: the files are in place and the next
+     * start runs them. This only saves the user from having to do the starting
+     * themselves, which is worth offering, because in practice nobody restarts
+     * a program because a dialog asked them to.
+     *
+     * Offered rather than done. And offered only when HLSW's window was found,
+     * because without it there is nothing to close politely and the honest
+     * thing is to say so instead. */
+    if (parent && ask(parent, text(STR_INSTALLED), text(STR_INSTALLED_OFFER),
+                      ASK_RESTART, 0) == ANSWER_RESTART) {
+        g_restart_at = GetTickCount();
+        g_restart = 1;
+        launcher_log("update: asking HLSW to close so it can be started again");
+        /* Asked, not forced. HLSW gets to save what it has and may put up a
+         * question of its own, and if the answer to that is no, it simply
+         * stays open. See the guard in WinMain for what happens then. */
+        PostMessageW(parent, WM_CLOSE, 0, 0);
+    } else if (!parent) {
+        tell(parent, text(STR_INSTALLED), text(STR_INSTALLED_WHY), 0);
+    }
     return 0;
 }
 
@@ -1695,6 +1744,41 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR args, int show)
 
     /* Closed last of all, because the update thread holds it too. */
     CloseHandle(pi.hProcess);
+
+    /* Started again here rather than from the update thread, so that it
+     * happens when this process has nothing left to do: HLSW is gone, the
+     * tunnel is down, every handle is closed. The new launcher brings its own
+     * tunnel up again.
+     *
+     * The file being started is this program's own name, holding the version
+     * that was just checked against the checksum published with the release.
+     * From the outside it is hlsw.exe starting hlsw.exe, which is what it is:
+     * a restart, not something fetched and set loose.
+     *
+     * The minute is the guard for HLSW having asked a question of its own and
+     * been told no. Then it stays open, this process stays waiting, and by the
+     * time it does close the restart is no longer what anyone expects. */
+    if (g_restart && (GetTickCount() - g_restart_at) < 60000) {
+        STARTUPINFOA again_si;
+        PROCESS_INFORMATION again_pi;
+
+        memset(&again_si, 0, sizeof(again_si));
+        again_si.cb = sizeof(again_si);
+        memset(&again_pi, 0, sizeof(again_pi));
+        snprintf(cmdline, sizeof(cmdline), "\"%s\"", g_self);
+
+        if (CreateProcessA(g_self, cmdline, NULL, NULL, FALSE, 0, NULL, dir,
+                           &again_si, &again_pi)) {
+            CloseHandle(again_pi.hThread);
+            CloseHandle(again_pi.hProcess);
+            launcher_log("update: started again");
+        } else {
+            launcher_log("update: could not start again, error %lu", GetLastError());
+        }
+    } else if (g_restart) {
+        launcher_log("update: HLSW stayed open too long after the restart was "
+                     "asked for, leaving it to the next start");
+    }
 
     return 0;
 }

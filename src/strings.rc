@@ -55,6 +55,9 @@ STRINGTABLE
     STR_INSTALL_FAILED_EXE  "The launcher could not be replaced, so hlswfix.dll was put back as it was and nothing has changed. The most likely reason is that the HLSW folder is not writable by this account."
     STR_INSTALLED           "Update installed"
     STR_INSTALLED_WHY       "Close HLSW and start it again to run the new version. Nothing else is needed, and hlswfix.ini was left exactly as it was."
+    STR_INSTALLED_OFFER     "The new version is in place. HLSW has to be started again before it runs, and this can do that now. Your hlswfix.ini was left exactly as it was."
+    STR_BTN_RESTART         "Restart HLSW now\nCloses HLSW and opens it again with the new version."
+    STR_BTN_RESTART_LATER   "Later\nThe new version starts the next time you start HLSW."
 }
 
 /* -------------------------------------------------------------- German */
@@ -85,6 +88,9 @@ STRINGTABLE
     STR_INSTALL_FAILED_EXE  "Der Starter konnte nicht ersetzt werden, deshalb wurde hlswfix.dll zurückgesetzt und es hat sich nichts geändert. Am wahrscheinlichsten ist, dass dieses Konto im HLSW-Ordner nicht schreiben darf."
     STR_INSTALLED           "Update installiert"
     STR_INSTALLED_WHY       "Schließe HLSW und starte es neu, damit die neue Fassung läuft. Mehr ist nicht nötig, und hlswfix.ini blieb genau so, wie sie war."
+    STR_INSTALLED_OFFER     "Die neue Fassung liegt bereit. HLSW muss dafür neu gestartet werden, und das kann hier gleich geschehen. Deine hlswfix.ini blieb genau so, wie sie war."
+    STR_BTN_RESTART         "HLSW jetzt neu starten\nSchließt HLSW und öffnet es wieder mit der neuen Fassung."
+    STR_BTN_RESTART_LATER   "Später\nDie neue Fassung läuft, sobald du HLSW das nächste Mal startest."
 }
 
 /* ------------------------------------------------------------- Chinese */
@@ -115,6 +121,9 @@ STRINGTABLE
     STR_INSTALL_FAILED_EXE  "无法替换启动程序，因此 hlswfix.dll 已还原，没有任何改动。最可能的原因是此账户对 HLSW 目录没有写入权限。"
     STR_INSTALLED           "更新已安装"
     STR_INSTALLED_WHY       "关闭 HLSW 再重新启动，即可运行新版本。不需要做别的，hlswfix.ini 也完全保持原样。"
+    STR_INSTALLED_OFFER     "新版本已就位。要让它生效，需要重新启动 HLSW，这里可以立刻代劳。你的 hlswfix.ini 完全保持原样。"
+    STR_BTN_RESTART         "立即重启 HLSW\n关闭 HLSW 并用新版本重新打开。"
+    STR_BTN_RESTART_LATER   "以后再说\n下次启动 HLSW 时，新版本就会生效。"
 }
 
 /* --------------------------------------------------------------- Czech */
@@ -145,6 +154,9 @@ STRINGTABLE
     STR_INSTALL_FAILED_EXE  "Spouštěč se nepodařilo nahradit, proto byl hlswfix.dll vrácen zpět a nic se nezměnilo. Nejpravděpodobnějším důvodem je, že tento účet nemá do složky HLSW právo zápisu."
     STR_INSTALLED           "Aktualizace nainstalována"
     STR_INSTALLED_WHY       "Zavřete HLSW a spusťte jej znovu, aby běžela nová verze. Nic dalšího není potřeba a hlswfix.ini zůstal přesně takový, jaký byl."
+    STR_INSTALLED_OFFER     "Nová verze je připravena. Aby se spustila, musí se HLSW nastartovat znovu, a to lze udělat hned tady. Váš hlswfix.ini zůstal přesně takový, jaký byl."
+    STR_BTN_RESTART         "Restartovat HLSW nyní\nZavře HLSW a otevře jej znovu s novou verzí."
+    STR_BTN_RESTART_LATER   "Teď ne\nNová verze se spustí, až HLSW spustíte příště."
 }
 
 /* -------------------------------------------------------------- Danish */
@@ -175,6 +187,9 @@ STRINGTABLE
     STR_INSTALL_FAILED_EXE  "Starteren kunne ikke erstattes, så hlswfix.dll blev sat tilbage, og intet er ændret. Den mest sandsynlige årsag er, at denne konto ikke må skrive i HLSW-mappen."
     STR_INSTALLED           "Opdatering installeret"
     STR_INSTALLED_WHY       "Luk HLSW og start det igen for at køre den nye udgave. Der skal ikke mere til, og hlswfix.ini blev efterladt præcis som den var."
+    STR_INSTALLED_OFFER     "Den nye udgave ligger klar. HLSW skal startes igen, før den kører, og det kan gøres herfra med det samme. Din hlswfix.ini blev efterladt præcis som den var."
+    STR_BTN_RESTART         "Genstart HLSW nu\nLukker HLSW og åbner det igen med den nye udgave."
+    STR_BTN_RESTART_LATER   "Ikke nu\nDen nye udgave kører, næste gang du starter HLSW."
 }
 
 /* ------------------------------------------------------------- Spanish */
@@ -205,6 +220,9 @@ STRINGTABLE
     STR_INSTALL_FAILED_EXE  "No se pudo reemplazar el lanzador, así que hlswfix.dll se dejó como estaba y no ha cambiado nada. Lo más probable es que esta cuenta no tenga permiso de escritura en la carpeta de HLSW."
     STR_INSTALLED           "Actualización instalada"
     STR_INSTALLED_WHY       "Cierre HLSW y vuelva a abrirlo para usar la nueva versión. No hace falta nada más, y hlswfix.ini quedó exactamente como estaba."
+    STR_INSTALLED_OFFER     "La nueva versión está en su sitio. Hay que iniciar HLSW de nuevo para que funcione, y esto puede hacerlo ahora mismo. Su hlswfix.ini quedó exactamente como estaba."
+    STR_BTN_RESTART         "Reiniciar HLSW ahora\nCierra HLSW y lo vuelve a abrir con la nueva versión."
+    STR_BTN_RESTART_LATER   "Ahora no\nLa nueva versión se usará la próxima vez que abra HLSW."
 }
 
 /* ------------------------------------------------------------- Finnish */
@@ -235,6 +253,9 @@ STRINGTABLE
     STR_INSTALL_FAILED_EXE  "Käynnistintä ei voitu korvata, joten hlswfix.dll palautettiin ennalleen eikä mikään muuttunut. Todennäköisin syy on, ettei tällä tilillä ole kirjoitusoikeutta HLSW:n kansioon."
     STR_INSTALLED           "Päivitys asennettu"
     STR_INSTALLED_WHY       "Sulje HLSW ja käynnistä se uudelleen, niin uusi versio on käytössä. Muuta ei tarvita, ja hlswfix.ini jäi täsmälleen ennalleen."
+    STR_INSTALLED_OFFER     "Uusi versio on paikallaan. HLSW on käynnistettävä uudelleen, ennen kuin se on käytössä, ja sen voi tehdä tästä heti. Tiedostosi hlswfix.ini jäi täsmälleen ennalleen."
+    STR_BTN_RESTART         "Käynnistä HLSW uudelleen\nSulkee HLSW:n ja avaa sen uudella versiolla."
+    STR_BTN_RESTART_LATER   "Ei nyt\nUusi versio on käytössä, kun käynnistät HLSW:n seuraavan kerran."
 }
 
 /* -------------------------------------------------------------- French */
@@ -265,6 +286,9 @@ STRINGTABLE
     STR_INSTALL_FAILED_EXE  "Le lanceur n'a pas pu être remplacé, donc hlswfix.dll a été remis en l'état et rien n'a changé. La raison la plus probable est que ce compte n'a pas le droit d'écrire dans le dossier de HLSW."
     STR_INSTALLED           "Mise à jour installée"
     STR_INSTALLED_WHY       "Fermez HLSW et relancez-le pour utiliser la nouvelle version. Rien d'autre n'est nécessaire, et hlswfix.ini est resté exactement tel quel."
+    STR_INSTALLED_OFFER     "La nouvelle version est en place. HLSW doit être relancé pour qu'elle s'applique, et cela peut se faire tout de suite ici. Votre hlswfix.ini est resté exactement tel quel."
+    STR_BTN_RESTART         "Relancer HLSW maintenant\nFerme HLSW et le rouvre avec la nouvelle version."
+    STR_BTN_RESTART_LATER   "Pas maintenant\nLa nouvelle version sera utilisée au prochain démarrage de HLSW."
 }
 
 /* ----------------------------------------------------------- Hungarian */
@@ -295,6 +319,9 @@ STRINGTABLE
     STR_INSTALL_FAILED_EXE  "Az indítót nem sikerült lecserélni, ezért a hlswfix.dll visszaállt, és semmi nem változott. A legvalószínűbb ok, hogy ennek a fióknak nincs írási joga a HLSW mappájához."
     STR_INSTALLED           "A frissítés telepítve"
     STR_INSTALLED_WHY       "Zárja be a HLSW-t, és indítsa el újra, hogy az új verzió fusson. Több nem kell, és a hlswfix.ini pontosan úgy maradt, ahogy volt."
+    STR_INSTALLED_OFFER     "Az új verzió a helyén van. Ahhoz, hogy fusson, a HLSW-t újra kell indítani, és ez itt rögtön megtehető. A hlswfix.ini pontosan úgy maradt, ahogy volt."
+    STR_BTN_RESTART         "HLSW újraindítása most\nBezárja a HLSW-t, és az új verzióval nyitja meg újra."
+    STR_BTN_RESTART_LATER   "Most nem\nAz új verzió a HLSW következő indításakor lép életbe."
 }
 
 /* --------------------------------------------------------------- Dutch */
@@ -325,6 +352,9 @@ STRINGTABLE
     STR_INSTALL_FAILED_EXE  "De starter kon niet worden vervangen, dus hlswfix.dll is teruggezet en er is niets veranderd. De waarschijnlijkste reden is dat dit account niet in de HLSW-map mag schrijven."
     STR_INSTALLED           "Update geïnstalleerd"
     STR_INSTALLED_WHY       "Sluit HLSW en start het opnieuw om de nieuwe versie te draaien. Meer is niet nodig, en hlswfix.ini is precies gebleven zoals hij was."
+    STR_INSTALLED_OFFER     "De nieuwe versie staat klaar. HLSW moet opnieuw worden gestart voordat die draait, en dat kan hier meteen. Uw hlswfix.ini is precies gebleven zoals hij was."
+    STR_BTN_RESTART         "HLSW nu opnieuw starten\nSluit HLSW en opent het weer met de nieuwe versie."
+    STR_BTN_RESTART_LATER   "Niet nu\nDe nieuwe versie draait zodra u HLSW de volgende keer start."
 }
 
 /* ----------------------------------------------------------- Norwegian */
@@ -355,6 +385,9 @@ STRINGTABLE
     STR_INSTALL_FAILED_EXE  "Starteren kunne ikke erstattes, så hlswfix.dll ble satt tilbake og ingenting er endret. Den mest sannsynlige årsaken er at denne kontoen ikke har skriverett i HLSW-mappen."
     STR_INSTALLED           "Oppdatering installert"
     STR_INSTALLED_WHY       "Lukk HLSW og start det igjen for å kjøre den nye utgaven. Mer skal det ikke til, og hlswfix.ini ble stående nøyaktig som den var."
+    STR_INSTALLED_OFFER     "Den nye utgaven ligger klar. HLSW må startes på nytt før den kjører, og det kan gjøres herfra med en gang. Din hlswfix.ini ble stående nøyaktig som den var."
+    STR_BTN_RESTART         "Start HLSW på nytt nå\nLukker HLSW og åpner det igjen med den nye utgaven."
+    STR_BTN_RESTART_LATER   "Ikke nå\nDen nye utgaven kjører neste gang du starter HLSW."
 }
 
 /* -------------------------------------------------------------- Polish */
@@ -385,6 +418,9 @@ STRINGTABLE
     STR_INSTALL_FAILED_EXE  "Nie udało się zastąpić programu uruchamiającego, więc hlswfix.dll został przywrócony i nic się nie zmieniło. Najbardziej prawdopodobną przyczyną jest brak prawa zapisu tego konta do folderu HLSW."
     STR_INSTALLED           "Aktualizacja zainstalowana"
     STR_INSTALLED_WHY       "Zamknij HLSW i uruchom go ponownie, aby działała nowa wersja. Nic więcej nie trzeba, a hlswfix.ini pozostał dokładnie taki, jaki był."
+    STR_INSTALLED_OFFER     "Nowa wersja jest na miejscu. Żeby zadziałała, HLSW musi zostać uruchomiony ponownie, a można to zrobić od razu tutaj. Twój hlswfix.ini pozostał dokładnie taki, jaki był."
+    STR_BTN_RESTART         "Uruchom HLSW ponownie\nZamyka HLSW i otwiera go z nową wersją."
+    STR_BTN_RESTART_LATER   "Nie teraz\nNowa wersja zadziała przy następnym uruchomieniu HLSW."
 }
 
 /* ---------------------------------------------------------- Portuguese */
@@ -415,6 +451,9 @@ STRINGTABLE
     STR_INSTALL_FAILED_EXE  "Não foi possível substituir o iniciador, por isso o hlswfix.dll foi reposto e nada mudou. A razão mais provável é esta conta não ter permissão de escrita na pasta do HLSW."
     STR_INSTALLED           "Atualização instalada"
     STR_INSTALLED_WHY       "Feche o HLSW e abra-o de novo para usar a nova versão. Não é preciso mais nada, e o hlswfix.ini ficou exatamente como estava."
+    STR_INSTALLED_OFFER     "A nova versão está no lugar. O HLSW tem de ser iniciado de novo para funcionar, e isso pode ser feito já aqui. O seu hlswfix.ini ficou exatamente como estava."
+    STR_BTN_RESTART         "Reiniciar o HLSW agora\nFecha o HLSW e abre-o de novo com a nova versão."
+    STR_BTN_RESTART_LATER   "Agora não\nA nova versão passa a valer da próxima vez que abrir o HLSW."
 }
 
 /* ------------------------------------------------------------- Russian */
@@ -445,6 +484,9 @@ STRINGTABLE
     STR_INSTALL_FAILED_EXE  "Не удалось заменить запускающий файл, поэтому hlswfix.dll возвращён на место и ничего не изменилось. Вероятнее всего, у этой учётной записи нет права записи в папку HLSW."
     STR_INSTALLED           "Обновление установлено"
     STR_INSTALLED_WHY       "Закройте HLSW и запустите его снова, чтобы работала новая версия. Больше ничего не нужно, а hlswfix.ini остался ровно таким, каким был."
+    STR_INSTALLED_OFFER     "Новая версия на месте. Чтобы она заработала, HLSW нужно запустить заново, и это можно сделать прямо отсюда. Ваш hlswfix.ini остался ровно таким, каким был."
+    STR_BTN_RESTART         "Перезапустить HLSW сейчас\nЗакроет HLSW и откроет его снова с новой версией."
+    STR_BTN_RESTART_LATER   "Не сейчас\nНовая версия заработает при следующем запуске HLSW."
 }
 
 /* -------------------------------------------------------------- Slovak */
@@ -475,6 +517,9 @@ STRINGTABLE
     STR_INSTALL_FAILED_EXE  "Spúšťač sa nepodarilo nahradiť, preto bol hlswfix.dll vrátený späť a nič sa nezmenilo. Najpravdepodobnejším dôvodom je, že tento účet nemá právo zápisu do priečinka HLSW."
     STR_INSTALLED           "Aktualizácia nainštalovaná"
     STR_INSTALLED_WHY       "Zavrite HLSW a spustite ho znova, aby bežala nová verzia. Nič iné netreba a hlswfix.ini zostal presne taký, aký bol."
+    STR_INSTALLED_OFFER     "Nová verzia je pripravená. Aby sa spustila, treba HLSW naštartovať znova, a dá sa to urobiť hneď tu. Váš hlswfix.ini zostal presne taký, aký bol."
+    STR_BTN_RESTART         "Reštartovať HLSW teraz\nZavrie HLSW a otvorí ho znova s novou verziou."
+    STR_BTN_RESTART_LATER   "Teraz nie\nNová verzia sa spustí pri ďalšom spustení HLSW."
 }
 
 /* ------------------------------------------------------------- Swedish */
@@ -505,6 +550,9 @@ STRINGTABLE
     STR_INSTALL_FAILED_EXE  "Startaren kunde inte ersättas, så hlswfix.dll sattes tillbaka och ingenting har ändrats. Den troligaste orsaken är att det här kontot inte får skriva i HLSW-mappen."
     STR_INSTALLED           "Uppdateringen installerad"
     STR_INSTALLED_WHY       "Stäng HLSW och starta det igen för att köra den nya versionen. Mer behövs inte, och hlswfix.ini lämnades exakt som den var."
+    STR_INSTALLED_OFFER     "Den nya versionen ligger på plats. HLSW måste startas om innan den körs, och det kan göras direkt härifrån. Din hlswfix.ini lämnades exakt som den var."
+    STR_BTN_RESTART         "Starta om HLSW nu\nStänger HLSW och öppnar det igen med den nya versionen."
+    STR_BTN_RESTART_LATER   "Inte nu\nDen nya versionen körs nästa gång du startar HLSW."
 }
 
 /* ------------------------------------------------------------- Turkish */
@@ -535,6 +583,9 @@ STRINGTABLE
     STR_INSTALL_FAILED_EXE  "Başlatıcı değiştirilemedi, bu yüzden hlswfix.dll eski haline döndürüldü ve hiçbir şey değişmedi. En olası neden, bu hesabın HLSW klasörüne yazma yetkisinin olmamasıdır."
     STR_INSTALLED           "Güncelleme kuruldu"
     STR_INSTALLED_WHY       "Yeni sürümün çalışması için HLSW'yi kapatıp yeniden açın. Başka bir şey gerekmez ve hlswfix.ini tam olarak olduğu gibi kaldı."
+    STR_INSTALLED_OFFER     "Yeni sürüm yerinde. Çalışması için HLSW'nin yeniden başlatılması gerekir ve bu hemen buradan yapılabilir. hlswfix.ini dosyanız tam olarak olduğu gibi kaldı."
+    STR_BTN_RESTART         "HLSW'yi şimdi yeniden başlat\nHLSW'yi kapatır ve yeni sürümle yeniden açar."
+    STR_BTN_RESTART_LATER   "Şimdi değil\nYeni sürüm, HLSW'yi bir sonraki açışınızda devreye girer."
 }
 
 #endif /* !BUILD_DLL */

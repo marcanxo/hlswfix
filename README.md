@@ -16,7 +16,7 @@ whole of what it touches.
 
 1. Install HLSW first. If you do not have it, see [Getting HLSW](#getting-hlsw)
    below.
-2. Download `hlswfix-1.8.1.0.zip` from the [releases page][releases]. Not the
+2. Download `hlswfix-1.8.2.0.zip` from the [releases page][releases]. Not the
    green **Code** button: that gives you the sources without the built files.
 3. Unpack it anywhere and close HLSW if it is running.
 4. Double click **`install.cmd`**.
@@ -260,7 +260,7 @@ Everything in `hlswfix.ini` is optional, including the file itself. The fix
 needs no configuration. The comments in the file explain each setting; three
 are worth repeating here.
 
-**`title_version`** is why the title bar says **HLSW v1.8.1.0**. The developers'
+**`title_version`** is why the title bar says **HLSW v1.8.2.0**. The developers'
 last release was 1.4.0.5 in 2011, and the new number says at a glance that this
 HLSW has the fix in it. You do not have to set it: with the line left out, the
 version of the fix itself is shown, read from its own file, so it stays right
@@ -483,6 +483,24 @@ than three.
 `hlswfix.ini` is never touched. It is the one file you edit, the installer has
 always left it alone, and an updater that overwrote it would undo every setting
 on the machine it was meant to help.
+
+When it is done, it offers to start HLSW again. The new version only runs from
+the next start, and in practice nobody restarts a program because a dialog
+asked them to. It is an offer and not an action: the other button says plainly
+that the new version starts with HLSW the next time. Choosing to restart asks
+HLSW to close the polite way, so it can save what it has and ask a question of
+its own if it wants to, and if that question is answered with no then HLSW
+stays open and nothing further happens. The starting itself is done by this
+launcher as the very last thing it does, when HLSW is gone, the tunnel is down
+and every handle is closed.
+
+Worth being straight about what that adds: downloading a file, putting it in
+place and then running it is the shape virus scanners are built to notice. Two
+things make this a weaker case than it sounds. The file being started is this
+program's own name in its own folder, so from the outside it is `hlsw.exe`
+starting `hlsw.exe`, which is a restart and not something fetched and set
+loose. And it is the file that was just checked against the checksum published
+with the release, after somebody pressed a button asking for exactly this.
 
 **What the hash check does and does not prove.** It catches a download that
 arrived damaged or was interfered with on the way. It cannot catch a release

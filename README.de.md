@@ -17,7 +17,7 @@ und legt Dateien daneben, und mehr fasst er nicht an.
 
 1. Zuerst HLSW installieren. Falls du es nicht hast, siehe
    [HLSW beschaffen](#hlsw-beschaffen) weiter unten.
-2. `hlswfix-1.8.1.0.zip` von der [Releases-Seite][releases] laden. Nicht über den
+2. `hlswfix-1.8.2.0.zip` von der [Releases-Seite][releases] laden. Nicht über den
    grünen **Code**-Knopf: der gibt dir die Quellen ohne die gebauten Dateien.
 3. Irgendwohin entpacken und HLSW schließen, falls es läuft.
 4. Doppelklick auf **`install.cmd`**.
@@ -284,7 +284,7 @@ Alles in `hlswfix.ini` ist optional, die Datei selbst eingeschlossen. Der Fix
 braucht keine Konfiguration. Die Kommentare in der Datei erklären jede
 Einstellung, drei sind es wert, hier wiederholt zu werden.
 
-**`title_version`** ist der Grund, warum in der Titelzeile **HLSW v1.8.1.0**
+**`title_version`** ist der Grund, warum in der Titelzeile **HLSW v1.8.2.0**
 steht. Die letzte Version der Entwickler war 1.4.0.5 aus dem Jahr 2011, und die
 neue Nummer sagt auf einen Blick, dass in diesem HLSW der Fix steckt. Setzen
 musst du sie nicht: ohne die Zeile wird die Version des Fixes selbst angezeigt,
@@ -521,6 +521,24 @@ liegt eine Datei statt drei.
 `hlswfix.ini` wird nie angefasst. Es ist die eine Datei, die du bearbeitest, der
 Installer hat sie immer in Ruhe gelassen, und ein Updater, der sie überschreibt,
 macht genau die Einstellungen kaputt, denen er helfen soll.
+
+Ist es fertig, bietet es an, HLSW neu zu starten. Die neue Fassung läuft erst
+ab dem nächsten Start, und in der Praxis startet niemand ein Programm neu, bloß
+weil ein Dialog darum bittet. Es ist ein Angebot und keine Handlung: der andere
+Knopf sagt klar, dass die neue Fassung beim nächsten Start von HLSW läuft. Wer
+den Neustart wählt, bittet HLSW auf dem höflichen Weg zu schließen, damit es
+sichern kann, was es hat, und bei Bedarf selbst noch etwas fragt; wird diese
+Frage verneint, bleibt HLSW einfach offen und es passiert nichts weiter. Das
+Starten selbst erledigt dieser Launcher als allerletztes, wenn HLSW beendet
+ist, der Tunnel unten und jedes Handle geschlossen.
+
+Dazu gehört gesagt, was das hinzufügt: eine Datei herunterladen, einsetzen und
+dann ausführen ist genau die Form, auf die Virenscanner achten. Zwei Dinge
+entschärfen den Fall aber deutlich. Gestartet wird der eigene Name dieses
+Programms in seinem eigenen Ordner, von außen also `hlsw.exe`, das `hlsw.exe`
+startet, und das ist ein Neustart und nichts Hergeholtes, das losgelassen wird.
+Und es ist die Datei, die eben gegen die zum Release veröffentlichte Prüfsumme
+geprüft wurde, nachdem jemand genau dafür einen Knopf gedrückt hat.
 
 **Was die Prüfsumme beweist und was nicht.** Sie fängt einen Download ab, der
 beschädigt ankam oder unterwegs verändert wurde. Sie fängt kein Release ab, das

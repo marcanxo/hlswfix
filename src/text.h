@@ -54,8 +54,11 @@
 #define STR_INSTALL_FAILED_EXE  21
 #define STR_INSTALLED           22
 #define STR_INSTALLED_WHY       23
+#define STR_INSTALLED_OFFER     24
+#define STR_BTN_RESTART         25
+#define STR_BTN_RESTART_LATER   26
 
-#define STR_COUNT               23
+#define STR_COUNT               26
 
 #ifndef RC_INVOKED
 
