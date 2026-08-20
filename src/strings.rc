@@ -2,10 +2,11 @@
  * Every text hlswfix shows, in every language HLSW itself speaks.
  *
  * One block per language, filed under the primary language id with no
- * sublanguage, because the primary is all HLSW records in
- * HKCU\Software\HLSW\Settings\Language and all that is needed to tell them
- * apart. See src/text.h for how one is chosen and why HLSW's own setting
- * decides rather than the Windows one.
+ * sublanguage. HLSW records a full language id in
+ * HKCU\Software\HLSW\Settings\Language, 1031 for German and 9 for English,
+ * but only its primary half tells the languages apart, and that is the half
+ * both sides use here. See src/text.h for how one is chosen and why HLSW's own
+ * setting decides rather than the Windows one.
  *
  * English comes first and is the fallback for anything a translation has not
  * caught up with, so a missing line is missing and never empty.

@@ -2,9 +2,11 @@
  * The texts hlswfix shows, and the one place they are fetched from.
  *
  * HLSW itself speaks eighteen languages and remembers which one under
- * HKCU\Software\HLSW\Settings\Language, as the primary language id: 7 is
- * German, 9 is English, and its own files in cfg\language are named after the
- * same number. We follow that setting rather than the Windows one, on purpose.
+ * HKCU\Software\HLSW\Settings\Language, as a full Windows language id: 1031,
+ * that is 0x0407, for German as spoken in Germany, and 9 for English. Its own
+ * files in cfg\language are named after the two halves of that number, 07-01
+ * and 09-00. Only the first half tells the languages apart, so that is the half
+ * that is taken. We follow this setting rather than the Windows one, on purpose.
  * Our dialogs appear inside HLSW and belong to its window, so somebody who has
  * set HLSW to German should not be answered in English because Windows happens
  * to be English.
@@ -149,6 +151,8 @@ static void text_init(HMODULE module, unsigned probe)
                       KEY_QUERY_VALUE, &key) == ERROR_SUCCESS) {
         if (RegQueryValueExA(key, "Language", NULL, &type, (LPBYTE)&value, &size)
                 == ERROR_SUCCESS && type == REG_DWORD)
+            /* The low ten bits, which is the primary language: the value is
+             * a full language id and 0x0407 and 0x0807 are both German. */
             want = (WORD)(value & 0x3FF);
         RegCloseKey(key);
     }
