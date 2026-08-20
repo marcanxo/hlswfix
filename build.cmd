@@ -48,14 +48,18 @@ if "%MINGW%"=="" (set WINDRES=windres) else (set WINDRES=%MINGW%\windres.exe)
 
 if not exist "%OUT%" mkdir "%OUT%"
 
+rem -c 65001 because src\strings.rc is UTF-8: it holds every text hlswfix
+rem shows in all seventeen languages HLSW speaks, and Cyrillic, Chinese and
+rem Turkish have to stand there as themselves rather than as escapes.
+rem
 rem The version resource is not decoration. It tells anyone who opens the file
 rem properties what the file under HLSW's name really is, and it gives the
 rem executable a resource section, without which BeginUpdateResource refuses to
 rem work and the launcher cannot be handed HLSW's icon at install time.
 echo Building the version resources
-"%WINDRES%" -DBUILD_DLL -i "%SRC%\hlswfix.rc" -O coff -o "%OUT%\hlswfix.dll.res"
+"%WINDRES%" -c 65001 -I "%SRC%" -DBUILD_DLL -i "%SRC%\hlswfix.rc" -O coff -o "%OUT%\hlswfix.dll.res"
 if errorlevel 1 exit /b 1
-"%WINDRES%" -i "%SRC%\hlswfix.rc" -O coff -o "%OUT%\hlswfix.exe.res"
+"%WINDRES%" -c 65001 -I "%SRC%" -i "%SRC%\hlswfix.rc" -O coff -o "%OUT%\hlswfix.exe.res"
 if errorlevel 1 exit /b 1
 
 echo Building hlswfix.dll

@@ -45,6 +45,8 @@
 #include <commctrl.h>
 #include <shellapi.h>
 
+#include "text.h"
+
 /* Room for a full length directory plus one of the file names appended to it,
  * so that none of the paths built below can be cut short. */
 #define PATHBUF (MAX_PATH + 32)
@@ -79,12 +81,20 @@ static void launcher_log(const char *fmt, ...)
     fclose(fh);
 }
 
-static void die(const char *what)
+static void die(unsigned what)
 {
-    char msg[512];
+    /* First of all, before fetching a text: every call in here goes through
+     * Windows, and any of them may set its own error code over this one. */
+    DWORD err = GetLastError();
+    wchar_t msg[1024], tail[160];
 
-    snprintf(msg, sizeof(msg), "%s\r\n\r\nWindows error %lu.", what, GetLastError());
-    MessageBoxA(NULL, msg, "hlswfix", MB_OK | MB_ICONERROR);
+    _snwprintf(msg, 1023, L"%s\r\n\r\n", text(what));
+    msg[1023] = 0;
+    _snwprintf(tail, 159, text(STR_WINDOWS_ERROR), err);
+    tail[159] = 0;
+    wcsncat(msg, tail, 1023 - wcslen(msg));
+
+    MessageBoxW(NULL, msg, L"hlswfix", MB_OK | MB_ICONERROR);
     ExitProcess(1);
 }
 
@@ -1061,17 +1071,14 @@ static int ask(HWND parent, const wchar_t *heading, const wchar_t *detail,
 
     if (offer_install) {
         buttons[n].nButtonID = ANSWER_INSTALL;
-        buttons[n].pszButtonText = L"Install it now\n"
-                                   L"Downloads and puts it in place. HLSW keeps running, "
-                                   L"and the new version starts with it next time.";
+        buttons[n].pszButtonText = text(STR_BTN_INSTALL);
         n++;
     }
     buttons[n].nButtonID = ANSWER_PAGE;
-    buttons[n].pszButtonText = L"Open the release page\n"
-                               L"See what changed and download it yourself.";
+    buttons[n].pszButtonText = text(STR_BTN_PAGE);
     n++;
     buttons[n].nButtonID = ANSWER_LATER;
-    buttons[n].pszButtonText = L"Not now";
+    buttons[n].pszButtonText = text(STR_BTN_LATER);
     n++;
 
     memset(&cfg, 0, sizeof(cfg));
@@ -1448,23 +1455,21 @@ static DWORD WINAPI check_update(LPVOID unused)
                  can_install ? "" : " (that release carries no loose files, "
                                     "so only the page is offered)");
 
-    _snwprintf(heading, 127, L"hlswfix %S is available", tag);
-    heading[127] = 0;
-    _snwprintf(detail, 1023,
-               L"This HLSW is running hlswfix %S.\n\n"
-               L"%s"
-               L"Your hlswfix.ini is never touched, so every setting in it stays as it is.\n\n"
-               L"This check runs once when HLSW starts, asks GitHub for one file, and sends "
-               L"nothing about you or this machine. Put update_check = 0 in hlswfix.ini to "
-               L"switch it off.",
-               have_text,
-               can_install
-                   ? L"Installing downloads that release and replaces two files, hlswfix.dll "
-                     L"and the launcher. HLSW can stay open; the new version takes over the "
-                     L"next time it starts.\n\n"
-                   : L"That release carries no archive this can install from, so it has to be "
-                     L"downloaded from the page.\n\n");
-    detail[1023] = 0;
+    {
+        wchar_t wtag[64], whave[64], running[320];
+
+        MultiByteToWideChar(CP_ACP, 0, tag, -1, wtag, 64);
+        MultiByteToWideChar(CP_ACP, 0, have_text, -1, whave, 64);
+
+        _snwprintf(heading, 127, text(STR_UPDATE_AVAILABLE), wtag);
+        heading[127] = 0;
+        _snwprintf(running, 319, text(STR_UPDATE_RUNNING), whave);
+        running[319] = 0;
+        _snwprintf(detail, 1023, L"%s\n\n%s\n\n%s", running,
+                   text(can_install ? STR_UPDATE_WHAT_INSTALL : STR_UPDATE_PAGE_ONLY),
+                   text(STR_UPDATE_PRIVACY));
+        detail[1023] = 0;
+    }
 
     /* Only now, once there is something to say. Waiting for HLSW's window
      * before there is a question would hold this thread up for nothing. */
@@ -1480,10 +1485,7 @@ static DWORD WINAPI check_update(LPVOID unused)
 
     zip = fetch_verified(url_zip, sha_zip, &zip_len);
     if (!zip) {
-        if (ask(parent, L"The update could not be downloaded",
-                L"Either the download did not finish, or what arrived did not match the "
-                L"hash published with the release. Nothing on this machine was changed.\n\n"
-                L"The release page has the same archive to download by hand.",
+        if (ask(parent, text(STR_DOWNLOAD_FAILED), text(STR_DOWNLOAD_FAILED_WHY),
                 0, 1) == ANSWER_PAGE)
             ShellExecuteA(NULL, "open", RELEASE_PAGE, NULL, NULL, SW_SHOWNORMAL);
         return 0;
@@ -1500,11 +1502,7 @@ static DWORD WINAPI check_update(LPVOID unused)
     if (!dll_data || !exe_data) {
         free(dll_data);
         free(exe_data);
-        if (ask(parent, L"The update could not be unpacked",
-                L"The archive arrived complete and matched its published hash, but the two "
-                L"files this installs are not in it in the form it expects. Nothing on this "
-                L"machine was changed.\n\n"
-                L"The release page has the archive to install by hand.",
+        if (ask(parent, text(STR_UNPACK_FAILED), text(STR_UNPACK_FAILED_WHY),
                 0, 1) == ANSWER_PAGE)
             ShellExecuteA(NULL, "open", RELEASE_PAGE, NULL, NULL, SW_SHOWNORMAL);
         return 0;
@@ -1515,19 +1513,14 @@ static DWORD WINAPI check_update(LPVOID unused)
     if (!swap_in(dll_path, dll_data, dll_len)) {
         free(dll_data);
         free(exe_data);
-        tell(parent, L"The update could not be installed",
-             L"hlswfix.dll could not be replaced. Nothing was changed. The most likely "
-             L"reason is that the HLSW folder is not writable by this account.", 1);
+        tell(parent, text(STR_INSTALL_FAILED), text(STR_INSTALL_FAILED_DLL), 1);
         return 0;
     }
     if (!install_launcher(g_self, exe_data, exe_len, g_hlsw_real)) {
         swap_back(dll_path);
         free(dll_data);
         free(exe_data);
-        tell(parent, L"The update could not be installed",
-             L"The launcher could not be replaced, so hlswfix.dll was put back as it was "
-             L"and nothing has changed. The most likely reason is that the HLSW folder is "
-             L"not writable by this account.", 1);
+        tell(parent, text(STR_INSTALL_FAILED), text(STR_INSTALL_FAILED_EXE), 1);
         return 0;
     }
 
@@ -1535,9 +1528,7 @@ static DWORD WINAPI check_update(LPVOID unused)
     free(exe_data);
 
     launcher_log("update: %s installed", tag);
-    tell(parent, L"Update installed",
-         L"Close HLSW and start it again to run the new version. Nothing else is needed, "
-         L"and hlswfix.ini was left exactly as it was.", 0);
+    tell(parent, text(STR_INSTALLED), text(STR_INSTALLED_WHY), 0);
     return 0;
 }
 
@@ -1558,6 +1549,10 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR args, int show)
         return copy_icon(__argv[2], __argv[3]) ? 0 : 1;
     }
 
+    /* Before anything can need a text, and before the first thing that could
+     * fail has a message to show. */
+    text_init(GetModuleHandleW(NULL), STR_WINDOWS_ERROR);
+
     own_dir(dir, sizeof(dir));
     snprintf(dll, sizeof(dll), "%shlswfix.dll", dir);
     snprintf(g_log_path, sizeof(g_log_path), "%shlswfix.log", dir);
@@ -1569,20 +1564,10 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR args, int show)
 
     switch (find_hlsw(dir, target, sizeof(target))) {
     case 0:
-        MessageBoxA(NULL,
-                    "HLSW was not found next to this program.\r\n\r\n"
-                    "hlswfix.exe, hlswfix.dll and hlswfix.ini belong in the "
-                    "folder HLSW is installed in, the one that has hlsw.exe "
-                    "in it.",
-                    "hlswfix", MB_OK | MB_ICONERROR);
+        MessageBoxW(NULL, text(STR_NO_HLSW), L"hlswfix", MB_OK | MB_ICONERROR);
         return 1;
     case -1:
-        MessageBoxA(NULL,
-                    "hlsw.exe is this launcher, and hlsw-real.exe is missing.\r\n\r\n"
-                    "An HLSW update has most likely overwritten the launcher. "
-                    "Run install.ps1 again to put things back, or reinstall "
-                    "HLSW and then run it.",
-                    "hlswfix", MB_OK | MB_ICONERROR);
+        MessageBoxW(NULL, text(STR_LAUNCHER_IS_HLSW), L"hlswfix", MB_OK | MB_ICONERROR);
         return 1;
     }
 
@@ -1666,15 +1651,12 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR args, int show)
 
     if (!CreateProcessA(target, cmdline, NULL, NULL, FALSE,
                         CREATE_SUSPENDED, NULL, dir, &si, &pi))
-        die("HLSW could not be started.");
+        die(STR_START_FAILED);
 
     if (!inject(pi.hProcess, dll)) {
         /* Better a working HLSW that shows timeouts than none at all, so the
          * process is resumed either way and the user is simply told. */
-        MessageBoxA(NULL,
-                    "hlswfix.dll could not be loaded into HLSW.\r\n\r\n"
-                    "HLSW starts anyway, but servers will show as timed out.",
-                    "hlswfix", MB_OK | MB_ICONWARNING);
+        MessageBoxW(NULL, text(STR_INJECT_FAILED), L"hlswfix", MB_OK | MB_ICONWARNING);
     }
 
     ResumeThread(pi.hThread);

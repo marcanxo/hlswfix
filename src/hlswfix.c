@@ -66,6 +66,8 @@
 #include <string.h>
 #include <wchar.h>
 
+#include "text.h"
+
 /* Room for a full length directory plus one of the file names appended to it,
  * so that none of the paths built below can be cut short. */
 #define PATHBUF (MAX_PATH + 32)
@@ -2256,6 +2258,10 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
     DisableThreadLibraryCalls(inst);
     InitializeCriticalSection(&g_lock);
     g_self = (HMODULE)inst;
+    /* Our own copy of the texts, in the language HLSW is set to. Reading a
+     * resource out of an image that is already mapped touches the loader not
+     * at all, which is the same reason load_own_version reads it this way. */
+    text_init((HMODULE)inst, STR_HOOKS_FAILED);
     /* Own version first, so that a title_version line in the file overrides it
      * rather than the other way round. */
     load_own_version(inst);
@@ -2376,10 +2382,7 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
      * keeps a missing one from being called through is at the call site, not
      * in this condition. */
     if (!((real_recvfrom && real_sendto) || (real_recv && real_send))) {
-        MessageBoxA(NULL,
-                    "hlswfix could not redirect the winsock functions it needs.\r\n"
-                    "HLSW will run, but servers will show as timed out.",
-                    "hlswfix", MB_OK | MB_ICONWARNING);
+        MessageBoxW(NULL, text(STR_HOOKS_FAILED), L"hlswfix", MB_OK | MB_ICONWARNING);
     }
     return TRUE;
 }

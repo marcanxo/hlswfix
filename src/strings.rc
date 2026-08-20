@@ -1,0 +1,635 @@
+/*
+ * Every text hlswfix shows, in every language HLSW itself speaks.
+ *
+ * One block per language, filed under the primary language id with no
+ * sublanguage, because the primary is all HLSW records in
+ * HKCU\Software\HLSW\Settings\Language and all that is needed to tell them
+ * apart. See src/text.h for how one is chosen and why HLSW's own setting
+ * decides rather than the Windows one.
+ *
+ * English comes first and is the fallback for anything a translation has not
+ * caught up with, so a missing line is missing and never empty.
+ *
+ * This file is UTF-8 and build.cmd passes windres -c 65001, which is what lets
+ * Cyrillic, Chinese and Turkish stand here as themselves instead of as escapes
+ * nobody can read or check.
+ *
+ * Three rules when adding or changing a language. Keep %s and %lu exactly
+ * where they are and as many as the English line has, because the caller fills
+ * them in that order. Keep \r\n and \n as they are, they are the line breaks
+ * the dialogs rely on. And keep the texts short: these are dialogs, not
+ * documentation. What needs explaining at length is explained in hlswfix.ini
+ * and the README.
+ */
+
+#include "text.h"
+
+#ifndef BUILD_DLL
+
+/* ------------------------------------------------------------- English */
+LANGUAGE 0x09, 0x00
+STRINGTABLE
+{
+    STR_WINDOWS_ERROR       "Windows error %lu."
+    STR_START_FAILED        "HLSW could not be started."
+    STR_NO_HLSW             "HLSW was not found next to this program.\r\n\r\nhlswfix.exe, hlswfix.dll and hlswfix.ini belong in the folder HLSW is installed in, the one that has hlsw.exe in it."
+    STR_LAUNCHER_IS_HLSW    "hlsw.exe is this launcher, and hlsw-real.exe is missing.\r\n\r\nAn HLSW update has most likely overwritten the launcher. Run install.ps1 again to put things back, or reinstall HLSW and then run it."
+    STR_INJECT_FAILED       "hlswfix.dll could not be loaded into HLSW.\r\n\r\nHLSW starts anyway, but servers will show as timed out."
+
+    STR_UPDATE_AVAILABLE    "hlswfix %s is available"
+    STR_UPDATE_RUNNING      "This HLSW is running hlswfix %s."
+    STR_UPDATE_WHAT_INSTALL "Installing downloads that release, checks it against the checksum published with it, and replaces two files. HLSW can stay open; the new version takes over the next time it starts. Your hlswfix.ini is left exactly as it is."
+    STR_UPDATE_PAGE_ONLY    "That release cannot be installed from here, so it has to be downloaded from the page."
+    STR_UPDATE_PRIVACY      "This check runs once when HLSW starts, asks GitHub for one file, and sends nothing about you or this machine. Put update_check = 0 in hlswfix.ini to switch it off."
+    STR_BTN_INSTALL         "Install it now\nDownloads it and puts it in place. HLSW keeps running."
+    STR_BTN_PAGE            "Open the release page\nSee what changed and download it yourself."
+    STR_BTN_LATER           "Not now"
+
+    STR_DOWNLOAD_FAILED     "The update could not be downloaded"
+    STR_DOWNLOAD_FAILED_WHY "Either the download did not finish, or what arrived did not match the checksum published with the release. Nothing on this machine was changed.\n\nThe release page has the same archive to download by hand."
+    STR_UNPACK_FAILED       "The update could not be unpacked"
+    STR_UNPACK_FAILED_WHY   "The archive arrived complete and matched its published checksum, but the two files this installs are not in it in the form it expects. Nothing on this machine was changed.\n\nThe release page has the archive to install by hand."
+    STR_INSTALL_FAILED      "The update could not be installed"
+    STR_INSTALL_FAILED_DLL  "hlswfix.dll could not be replaced. Nothing was changed. The most likely reason is that the HLSW folder is not writable by this account."
+    STR_INSTALL_FAILED_EXE  "The launcher could not be replaced, so hlswfix.dll was put back as it was and nothing has changed. The most likely reason is that the HLSW folder is not writable by this account."
+    STR_INSTALLED           "Update installed"
+    STR_INSTALLED_WHY       "Close HLSW and start it again to run the new version. Nothing else is needed, and hlswfix.ini was left exactly as it was."
+}
+
+/* -------------------------------------------------------------- German */
+LANGUAGE 0x07, 0x00
+STRINGTABLE
+{
+    STR_WINDOWS_ERROR       "Windows-Fehler %lu."
+    STR_START_FAILED        "HLSW konnte nicht gestartet werden."
+    STR_NO_HLSW             "Neben diesem Programm wurde kein HLSW gefunden.\r\n\r\nhlswfix.exe, hlswfix.dll und hlswfix.ini gehören in den Ordner, in dem HLSW installiert ist, also dorthin, wo hlsw.exe liegt."
+    STR_LAUNCHER_IS_HLSW    "hlsw.exe ist dieser Starter, und hlsw-real.exe fehlt.\r\n\r\nWahrscheinlich hat ein HLSW-Update den Starter überschrieben. Starte install.ps1 erneut, oder installiere HLSW neu und danach install.ps1."
+    STR_INJECT_FAILED       "hlswfix.dll konnte nicht in HLSW geladen werden.\r\n\r\nHLSW startet trotzdem, aber die Server werden als Zeitüberschreitung angezeigt."
+
+    STR_UPDATE_AVAILABLE    "hlswfix %s ist verfügbar"
+    STR_UPDATE_RUNNING      "Dieses HLSW läuft mit hlswfix %s."
+    STR_UPDATE_WHAT_INSTALL "Installieren lädt diese Version herunter, prüft sie gegen die veröffentlichte Prüfsumme und ersetzt zwei Dateien. HLSW darf offen bleiben, die neue Fassung übernimmt beim nächsten Start. Deine hlswfix.ini bleibt unangetastet."
+    STR_UPDATE_PAGE_ONLY    "Diese Version lässt sich von hier aus nicht installieren, sie muss von der Seite geladen werden."
+    STR_UPDATE_PRIVACY      "Diese Prüfung läuft einmal beim Start von HLSW, fragt GitHub nach einer Datei und sendet nichts über dich oder diesen Rechner. Mit update_check = 0 in hlswfix.ini ist sie aus."
+    STR_BTN_INSTALL         "Jetzt installieren\nLädt sie herunter und setzt sie ein. HLSW läuft weiter."
+    STR_BTN_PAGE            "Release-Seite öffnen\nAnsehen, was sich geändert hat, und selbst herunterladen."
+    STR_BTN_LATER           "Später"
+
+    STR_DOWNLOAD_FAILED     "Das Update konnte nicht geladen werden"
+    STR_DOWNLOAD_FAILED_WHY "Entweder wurde der Download nicht fertig, oder das Angekommene passte nicht zur veröffentlichten Prüfsumme. Auf diesem Rechner wurde nichts geändert.\n\nAuf der Release-Seite liegt dasselbe Archiv zum Laden von Hand."
+    STR_UNPACK_FAILED       "Das Update konnte nicht entpackt werden"
+    STR_UNPACK_FAILED_WHY   "Das Archiv kam vollständig an und passte zu seiner veröffentlichten Prüfsumme, aber die beiden Dateien liegen darin nicht in der erwarteten Form. Auf diesem Rechner wurde nichts geändert.\n\nAuf der Release-Seite liegt das Archiv zum Installieren von Hand."
+    STR_INSTALL_FAILED      "Das Update konnte nicht installiert werden"
+    STR_INSTALL_FAILED_DLL  "hlswfix.dll konnte nicht ersetzt werden. Es wurde nichts geändert. Am wahrscheinlichsten ist, dass dieses Konto im HLSW-Ordner nicht schreiben darf."
+    STR_INSTALL_FAILED_EXE  "Der Starter konnte nicht ersetzt werden, deshalb wurde hlswfix.dll zurückgesetzt und es hat sich nichts geändert. Am wahrscheinlichsten ist, dass dieses Konto im HLSW-Ordner nicht schreiben darf."
+    STR_INSTALLED           "Update installiert"
+    STR_INSTALLED_WHY       "Schließe HLSW und starte es neu, damit die neue Fassung läuft. Mehr ist nicht nötig, und hlswfix.ini blieb genau so, wie sie war."
+}
+
+/* ------------------------------------------------------------- Chinese */
+LANGUAGE 0x04, 0x00
+STRINGTABLE
+{
+    STR_WINDOWS_ERROR       "Windows 错误 %lu。"
+    STR_START_FAILED        "无法启动 HLSW。"
+    STR_NO_HLSW             "在本程序旁边没有找到 HLSW。\r\n\r\nhlswfix.exe、hlswfix.dll 和 hlswfix.ini 应该放在 HLSW 的安装目录里，也就是有 hlsw.exe 的那个文件夹。"
+    STR_LAUNCHER_IS_HLSW    "hlsw.exe 就是本启动程序，而 hlsw-real.exe 不见了。\r\n\r\n多半是 HLSW 的更新覆盖了启动程序。请重新运行 install.ps1，或者重装 HLSW 之后再运行它。"
+    STR_INJECT_FAILED       "无法把 hlswfix.dll 载入 HLSW。\r\n\r\nHLSW 仍会启动，但服务器会显示为超时。"
+
+    STR_UPDATE_AVAILABLE    "hlswfix %s 可用"
+    STR_UPDATE_RUNNING      "此 HLSW 正在使用 hlswfix %s。"
+    STR_UPDATE_WHAT_INSTALL "安装会下载该版本，用随其发布的校验和进行核对，然后替换两个文件。HLSW 可以保持打开，新版本会在下次启动时生效。你的 hlswfix.ini 完全不受影响。"
+    STR_UPDATE_PAGE_ONLY    "该版本无法从这里安装，需要从发布页面下载。"
+    STR_UPDATE_PRIVACY      "此检查在 HLSW 启动时运行一次，向 GitHub 请求一个文件，不会发送任何关于你或本机的信息。在 hlswfix.ini 中设置 update_check = 0 即可关闭。"
+    STR_BTN_INSTALL         "立即安装\n下载并就位。HLSW 继续运行。"
+    STR_BTN_PAGE            "打开发布页面\n查看更新内容并自行下载。"
+    STR_BTN_LATER           "以后再说"
+
+    STR_DOWNLOAD_FAILED     "无法下载更新"
+    STR_DOWNLOAD_FAILED_WHY "下载没有完成，或者收到的内容与随该版本发布的校验和不符。本机上没有任何改动。\n\n发布页面上有同一个压缩包，可以手动下载。"
+    STR_UNPACK_FAILED       "无法解开更新"
+    STR_UNPACK_FAILED_WHY   "压缩包完整送达，也与公布的校验和相符，但其中要安装的两个文件不是预期的形式。本机上没有任何改动。\n\n发布页面上有该压缩包，可以手动安装。"
+    STR_INSTALL_FAILED      "无法安装更新"
+    STR_INSTALL_FAILED_DLL  "无法替换 hlswfix.dll。没有任何改动。最可能的原因是此账户对 HLSW 目录没有写入权限。"
+    STR_INSTALL_FAILED_EXE  "无法替换启动程序，因此 hlswfix.dll 已还原，没有任何改动。最可能的原因是此账户对 HLSW 目录没有写入权限。"
+    STR_INSTALLED           "更新已安装"
+    STR_INSTALLED_WHY       "关闭 HLSW 再重新启动，即可运行新版本。不需要做别的，hlswfix.ini 也完全保持原样。"
+}
+
+/* --------------------------------------------------------------- Czech */
+LANGUAGE 0x05, 0x00
+STRINGTABLE
+{
+    STR_WINDOWS_ERROR       "Chyba Windows %lu."
+    STR_START_FAILED        "HLSW se nepodařilo spustit."
+    STR_NO_HLSW             "Vedle tohoto programu nebyl nalezen žádný HLSW.\r\n\r\nSoubory hlswfix.exe, hlswfix.dll a hlswfix.ini patří do složky, kde je HLSW nainstalován, tedy tam, kde leží hlsw.exe."
+    STR_LAUNCHER_IS_HLSW    "hlsw.exe je tento spouštěč a hlsw-real.exe chybí.\r\n\r\nSpouštěč nejspíš přepsala aktualizace HLSW. Spusťte znovu install.ps1, nebo HLSW přeinstalujte a pak jej spusťte."
+    STR_INJECT_FAILED       "Soubor hlswfix.dll se nepodařilo načíst do HLSW.\r\n\r\nHLSW se přesto spustí, ale servery se budou zobrazovat jako nedostupné."
+
+    STR_UPDATE_AVAILABLE    "hlswfix %s je k dispozici"
+    STR_UPDATE_RUNNING      "Tento HLSW běží s hlswfix %s."
+    STR_UPDATE_WHAT_INSTALL "Instalace stáhne tuto verzi, ověří ji proti zveřejněnému kontrolnímu součtu a nahradí dva soubory. HLSW může zůstat otevřený, nová verze se použije při dalším spuštění. Váš hlswfix.ini zůstane beze změny."
+    STR_UPDATE_PAGE_ONLY    "Tuto verzi odsud nelze nainstalovat, je nutné ji stáhnout ze stránky."
+    STR_UPDATE_PRIVACY      "Kontrola proběhne jednou při spuštění HLSW, vyžádá si od GitHubu jeden soubor a neodesílá nic o vás ani o tomto počítači. Vypnete ji řádkem update_check = 0 v hlswfix.ini."
+    STR_BTN_INSTALL         "Nainstalovat nyní\nStáhne ji a nasadí. HLSW běží dál."
+    STR_BTN_PAGE            "Otevřít stránku vydání\nPodívat se, co se změnilo, a stáhnout ručně."
+    STR_BTN_LATER           "Teď ne"
+
+    STR_DOWNLOAD_FAILED     "Aktualizaci se nepodařilo stáhnout"
+    STR_DOWNLOAD_FAILED_WHY "Buď se stahování nedokončilo, nebo to, co dorazilo, neodpovídá zveřejněnému kontrolnímu součtu. Na tomto počítači se nic nezměnilo.\n\nStejný archiv je ke stažení na stránce vydání."
+    STR_UNPACK_FAILED       "Aktualizaci se nepodařilo rozbalit"
+    STR_UNPACK_FAILED_WHY   "Archiv dorazil celý a odpovídá zveřejněnému kontrolnímu součtu, ale dva soubory, které se instalují, v něm nejsou v očekávané podobě. Na tomto počítači se nic nezměnilo.\n\nArchiv je k instalaci ručně na stránce vydání."
+    STR_INSTALL_FAILED      "Aktualizaci se nepodařilo nainstalovat"
+    STR_INSTALL_FAILED_DLL  "Soubor hlswfix.dll se nepodařilo nahradit. Nic se nezměnilo. Nejpravděpodobnějším důvodem je, že tento účet nemá do složky HLSW právo zápisu."
+    STR_INSTALL_FAILED_EXE  "Spouštěč se nepodařilo nahradit, proto byl hlswfix.dll vrácen zpět a nic se nezměnilo. Nejpravděpodobnějším důvodem je, že tento účet nemá do složky HLSW právo zápisu."
+    STR_INSTALLED           "Aktualizace nainstalována"
+    STR_INSTALLED_WHY       "Zavřete HLSW a spusťte jej znovu, aby běžela nová verze. Nic dalšího není potřeba a hlswfix.ini zůstal přesně takový, jaký byl."
+}
+
+/* -------------------------------------------------------------- Danish */
+LANGUAGE 0x06, 0x00
+STRINGTABLE
+{
+    STR_WINDOWS_ERROR       "Windows-fejl %lu."
+    STR_START_FAILED        "HLSW kunne ikke startes."
+    STR_NO_HLSW             "Der blev ikke fundet noget HLSW ved siden af dette program.\r\n\r\nhlswfix.exe, hlswfix.dll og hlswfix.ini hører hjemme i den mappe, hvor HLSW er installeret, altså der hvor hlsw.exe ligger."
+    STR_LAUNCHER_IS_HLSW    "hlsw.exe er denne starter, og hlsw-real.exe mangler.\r\n\r\nEn HLSW-opdatering har efter alt at dømme overskrevet starteren. Kør install.ps1 igen, eller geninstaller HLSW og kør den derefter."
+    STR_INJECT_FAILED       "hlswfix.dll kunne ikke indlæses i HLSW.\r\n\r\nHLSW starter alligevel, men serverne vil blive vist som timeout."
+
+    STR_UPDATE_AVAILABLE    "hlswfix %s er tilgængelig"
+    STR_UPDATE_RUNNING      "Dette HLSW kører med hlswfix %s."
+    STR_UPDATE_WHAT_INSTALL "Installation henter denne udgave, kontrollerer den mod den offentliggjorte kontrolsum og erstatter to filer. HLSW kan blive åben; den nye udgave overtager næste gang, den starter. Din hlswfix.ini røres ikke."
+    STR_UPDATE_PAGE_ONLY    "Den udgave kan ikke installeres herfra og skal hentes fra siden."
+    STR_UPDATE_PRIVACY      "Dette tjek kører én gang, når HLSW starter, beder GitHub om én fil og sender intet om dig eller denne maskine. Skriv update_check = 0 i hlswfix.ini for at slå det fra."
+    STR_BTN_INSTALL         "Installer nu\nHenter den og sætter den på plads. HLSW kører videre."
+    STR_BTN_PAGE            "Åbn udgivelsessiden\nSe hvad der er ændret, og hent den selv."
+    STR_BTN_LATER           "Ikke nu"
+
+    STR_DOWNLOAD_FAILED     "Opdateringen kunne ikke hentes"
+    STR_DOWNLOAD_FAILED_WHY "Enten blev overførslen ikke færdig, eller det, der kom frem, passede ikke til den offentliggjorte kontrolsum. Intet på denne maskine blev ændret.\n\nDet samme arkiv kan hentes manuelt fra udgivelsessiden."
+    STR_UNPACK_FAILED       "Opdateringen kunne ikke pakkes ud"
+    STR_UNPACK_FAILED_WHY   "Arkivet kom helt frem og passede til sin offentliggjorte kontrolsum, men de to filer, dette installerer, ligger ikke i den forventede form. Intet på denne maskine blev ændret.\n\nArkivet kan installeres manuelt fra udgivelsessiden."
+    STR_INSTALL_FAILED      "Opdateringen kunne ikke installeres"
+    STR_INSTALL_FAILED_DLL  "hlswfix.dll kunne ikke erstattes. Intet blev ændret. Den mest sandsynlige årsag er, at denne konto ikke må skrive i HLSW-mappen."
+    STR_INSTALL_FAILED_EXE  "Starteren kunne ikke erstattes, så hlswfix.dll blev sat tilbage, og intet er ændret. Den mest sandsynlige årsag er, at denne konto ikke må skrive i HLSW-mappen."
+    STR_INSTALLED           "Opdatering installeret"
+    STR_INSTALLED_WHY       "Luk HLSW og start det igen for at køre den nye udgave. Der skal ikke mere til, og hlswfix.ini blev efterladt præcis som den var."
+}
+
+/* ------------------------------------------------------------- Spanish */
+LANGUAGE 0x0A, 0x00
+STRINGTABLE
+{
+    STR_WINDOWS_ERROR       "Error de Windows %lu."
+    STR_START_FAILED        "No se pudo iniciar HLSW."
+    STR_NO_HLSW             "No se encontró HLSW junto a este programa.\r\n\r\nhlswfix.exe, hlswfix.dll y hlswfix.ini van en la carpeta donde está instalado HLSW, la que contiene hlsw.exe."
+    STR_LAUNCHER_IS_HLSW    "hlsw.exe es este lanzador y falta hlsw-real.exe.\r\n\r\nLo más probable es que una actualización de HLSW haya sobrescrito el lanzador. Ejecute install.ps1 de nuevo, o reinstale HLSW y ejecútelo después."
+    STR_INJECT_FAILED       "No se pudo cargar hlswfix.dll en HLSW.\r\n\r\nHLSW arranca igualmente, pero los servidores aparecerán como agotados."
+
+    STR_UPDATE_AVAILABLE    "hlswfix %s está disponible"
+    STR_UPDATE_RUNNING      "Este HLSW funciona con hlswfix %s."
+    STR_UPDATE_WHAT_INSTALL "Instalar descarga esa versión, la comprueba contra la suma publicada con ella y reemplaza dos archivos. HLSW puede quedarse abierto; la nueva versión toma el relevo la próxima vez que se inicie. Su hlswfix.ini no se toca."
+    STR_UPDATE_PAGE_ONLY    "Esa versión no se puede instalar desde aquí, hay que descargarla desde la página."
+    STR_UPDATE_PRIVACY      "Esta comprobación se hace una vez al iniciar HLSW, pide un archivo a GitHub y no envía nada sobre usted ni sobre este equipo. Ponga update_check = 0 en hlswfix.ini para desactivarla."
+    STR_BTN_INSTALL         "Instalar ahora\nLa descarga y la coloca. HLSW sigue funcionando."
+    STR_BTN_PAGE            "Abrir la página de la versión\nVer qué ha cambiado y descargarla usted mismo."
+    STR_BTN_LATER           "Ahora no"
+
+    STR_DOWNLOAD_FAILED     "No se pudo descargar la actualización"
+    STR_DOWNLOAD_FAILED_WHY "O bien la descarga no terminó, o lo que llegó no coincide con la suma publicada con la versión. No se cambió nada en este equipo.\n\nLa página de la versión tiene el mismo archivo para descargarlo a mano."
+    STR_UNPACK_FAILED       "No se pudo descomprimir la actualización"
+    STR_UNPACK_FAILED_WHY   "El archivo llegó completo y coincide con su suma publicada, pero los dos ficheros que se instalan no están en él en la forma esperada. No se cambió nada en este equipo.\n\nLa página de la versión tiene el archivo para instalarlo a mano."
+    STR_INSTALL_FAILED      "No se pudo instalar la actualización"
+    STR_INSTALL_FAILED_DLL  "No se pudo reemplazar hlswfix.dll. No se cambió nada. Lo más probable es que esta cuenta no tenga permiso de escritura en la carpeta de HLSW."
+    STR_INSTALL_FAILED_EXE  "No se pudo reemplazar el lanzador, así que hlswfix.dll se dejó como estaba y no ha cambiado nada. Lo más probable es que esta cuenta no tenga permiso de escritura en la carpeta de HLSW."
+    STR_INSTALLED           "Actualización instalada"
+    STR_INSTALLED_WHY       "Cierre HLSW y vuelva a abrirlo para usar la nueva versión. No hace falta nada más, y hlswfix.ini quedó exactamente como estaba."
+}
+
+/* ------------------------------------------------------------- Finnish */
+LANGUAGE 0x0B, 0x00
+STRINGTABLE
+{
+    STR_WINDOWS_ERROR       "Windows-virhe %lu."
+    STR_START_FAILED        "HLSW:tä ei voitu käynnistää."
+    STR_NO_HLSW             "Tämän ohjelman vierestä ei löytynyt HLSW:tä.\r\n\r\nTiedostot hlswfix.exe, hlswfix.dll ja hlswfix.ini kuuluvat siihen kansioon, johon HLSW on asennettu, eli sinne missä hlsw.exe on."
+    STR_LAUNCHER_IS_HLSW    "hlsw.exe on tämä käynnistin, ja hlsw-real.exe puuttuu.\r\n\r\nHLSW:n päivitys on mitä todennäköisimmin korvannut käynnistimen. Aja install.ps1 uudelleen tai asenna HLSW uudelleen ja aja se sitten."
+    STR_INJECT_FAILED       "Tiedostoa hlswfix.dll ei voitu ladata HLSW:hen.\r\n\r\nHLSW käynnistyy silti, mutta palvelimet näkyvät aikakatkaistuina."
+
+    STR_UPDATE_AVAILABLE    "hlswfix %s on saatavilla"
+    STR_UPDATE_RUNNING      "Tässä HLSW:ssä on hlswfix %s."
+    STR_UPDATE_WHAT_INSTALL "Asennus lataa kyseisen version, tarkistaa sen julkaistua tarkistussummaa vasten ja korvaa kaksi tiedostoa. HLSW voi jäädä auki; uusi versio otetaan käyttöön seuraavalla käynnistyksellä. Tiedostoosi hlswfix.ini ei kosketa."
+    STR_UPDATE_PAGE_ONLY    "Tuota versiota ei voi asentaa täältä, se on ladattava sivulta."
+    STR_UPDATE_PRIVACY      "Tämä tarkistus tehdään kerran HLSW:n käynnistyessä, pyytää GitHubilta yhden tiedoston eikä lähetä mitään sinusta tai tästä koneesta. Kytke se pois rivillä update_check = 0 tiedostossa hlswfix.ini."
+    STR_BTN_INSTALL         "Asenna nyt\nLataa sen ja ottaa käyttöön. HLSW jatkaa toimintaansa."
+    STR_BTN_PAGE            "Avaa julkaisusivu\nKatso mikä muuttui ja lataa itse."
+    STR_BTN_LATER           "Ei nyt"
+
+    STR_DOWNLOAD_FAILED     "Päivitystä ei voitu ladata"
+    STR_DOWNLOAD_FAILED_WHY "Joko lataus ei valmistunut tai saapunut ei vastannut julkaisun mukana julkaistua tarkistussummaa. Tällä koneella ei muutettu mitään.\n\nSama paketti on ladattavissa käsin julkaisusivulta."
+    STR_UNPACK_FAILED       "Päivitystä ei voitu purkaa"
+    STR_UNPACK_FAILED_WHY   "Paketti saapui kokonaisena ja vastasi julkaistua tarkistussummaansa, mutta asennettavat kaksi tiedostoa eivät ole siinä odotetussa muodossa. Tällä koneella ei muutettu mitään.\n\nPaketti on asennettavissa käsin julkaisusivulta."
+    STR_INSTALL_FAILED      "Päivitystä ei voitu asentaa"
+    STR_INSTALL_FAILED_DLL  "Tiedostoa hlswfix.dll ei voitu korvata. Mitään ei muutettu. Todennäköisin syy on, ettei tällä tilillä ole kirjoitusoikeutta HLSW:n kansioon."
+    STR_INSTALL_FAILED_EXE  "Käynnistintä ei voitu korvata, joten hlswfix.dll palautettiin ennalleen eikä mikään muuttunut. Todennäköisin syy on, ettei tällä tilillä ole kirjoitusoikeutta HLSW:n kansioon."
+    STR_INSTALLED           "Päivitys asennettu"
+    STR_INSTALLED_WHY       "Sulje HLSW ja käynnistä se uudelleen, niin uusi versio on käytössä. Muuta ei tarvita, ja hlswfix.ini jäi täsmälleen ennalleen."
+}
+
+/* -------------------------------------------------------------- French */
+LANGUAGE 0x0C, 0x00
+STRINGTABLE
+{
+    STR_WINDOWS_ERROR       "Erreur Windows %lu."
+    STR_START_FAILED        "HLSW n'a pas pu être démarré."
+    STR_NO_HLSW             "Aucun HLSW n'a été trouvé à côté de ce programme.\r\n\r\nhlswfix.exe, hlswfix.dll et hlswfix.ini vont dans le dossier où HLSW est installé, celui qui contient hlsw.exe."
+    STR_LAUNCHER_IS_HLSW    "hlsw.exe est ce lanceur, et hlsw-real.exe est absent.\r\n\r\nUne mise à jour de HLSW a très probablement écrasé le lanceur. Relancez install.ps1, ou réinstallez HLSW puis exécutez-le."
+    STR_INJECT_FAILED       "hlswfix.dll n'a pas pu être chargé dans HLSW.\r\n\r\nHLSW démarre quand même, mais les serveurs apparaîtront comme injoignables."
+
+    STR_UPDATE_AVAILABLE    "hlswfix %s est disponible"
+    STR_UPDATE_RUNNING      "Ce HLSW fonctionne avec hlswfix %s."
+    STR_UPDATE_WHAT_INSTALL "L'installation télécharge cette version, la vérifie avec la somme de contrôle publiée avec elle et remplace deux fichiers. HLSW peut rester ouvert ; la nouvelle version prend le relais au prochain démarrage. Votre hlswfix.ini n'est pas touché."
+    STR_UPDATE_PAGE_ONLY    "Cette version ne peut pas être installée d'ici, il faut la télécharger depuis la page."
+    STR_UPDATE_PRIVACY      "Cette vérification a lieu une fois au démarrage de HLSW, demande un fichier à GitHub et n'envoie rien sur vous ni sur cette machine. Mettez update_check = 0 dans hlswfix.ini pour la désactiver."
+    STR_BTN_INSTALL         "Installer maintenant\nLa télécharge et la met en place. HLSW continue de tourner."
+    STR_BTN_PAGE            "Ouvrir la page de la version\nVoir ce qui a changé et la télécharger vous-même."
+    STR_BTN_LATER           "Pas maintenant"
+
+    STR_DOWNLOAD_FAILED     "La mise à jour n'a pas pu être téléchargée"
+    STR_DOWNLOAD_FAILED_WHY "Soit le téléchargement ne s'est pas terminé, soit ce qui est arrivé ne correspond pas à la somme de contrôle publiée avec la version. Rien n'a été modifié sur cette machine.\n\nLa page de la version propose la même archive à télécharger à la main."
+    STR_UNPACK_FAILED       "La mise à jour n'a pas pu être décompressée"
+    STR_UNPACK_FAILED_WHY   "L'archive est arrivée complète et correspond à sa somme de contrôle publiée, mais les deux fichiers à installer n'y sont pas sous la forme attendue. Rien n'a été modifié sur cette machine.\n\nLa page de la version propose l'archive à installer à la main."
+    STR_INSTALL_FAILED      "La mise à jour n'a pas pu être installée"
+    STR_INSTALL_FAILED_DLL  "hlswfix.dll n'a pas pu être remplacé. Rien n'a été modifié. La raison la plus probable est que ce compte n'a pas le droit d'écrire dans le dossier de HLSW."
+    STR_INSTALL_FAILED_EXE  "Le lanceur n'a pas pu être remplacé, donc hlswfix.dll a été remis en l'état et rien n'a changé. La raison la plus probable est que ce compte n'a pas le droit d'écrire dans le dossier de HLSW."
+    STR_INSTALLED           "Mise à jour installée"
+    STR_INSTALLED_WHY       "Fermez HLSW et relancez-le pour utiliser la nouvelle version. Rien d'autre n'est nécessaire, et hlswfix.ini est resté exactement tel quel."
+}
+
+/* ----------------------------------------------------------- Hungarian */
+LANGUAGE 0x0E, 0x00
+STRINGTABLE
+{
+    STR_WINDOWS_ERROR       "Windows-hiba: %lu."
+    STR_START_FAILED        "A HLSW nem indítható el."
+    STR_NO_HLSW             "A program mellett nem található HLSW.\r\n\r\nA hlswfix.exe, a hlswfix.dll és a hlswfix.ini abba a mappába való, ahová a HLSW telepítve van, vagyis oda, ahol a hlsw.exe van."
+    STR_LAUNCHER_IS_HLSW    "A hlsw.exe maga ez az indító, a hlsw-real.exe pedig hiányzik.\r\n\r\nAz indítót nagy valószínűséggel egy HLSW-frissítés írta felül. Futtassa újra az install.ps1 fájlt, vagy telepítse újra a HLSW-t, és utána futtassa."
+    STR_INJECT_FAILED       "A hlswfix.dll nem tölthető be a HLSW-be.\r\n\r\nA HLSW ettől még elindul, de a kiszolgálók időtúllépésként jelennek meg."
+
+    STR_UPDATE_AVAILABLE    "Elérhető a hlswfix %s"
+    STR_UPDATE_RUNNING      "Ez a HLSW a hlswfix %s verzióval fut."
+    STR_UPDATE_WHAT_INSTALL "A telepítés letölti azt a kiadást, összeveti a hozzá közzétett ellenőrzőösszeggel, és két fájlt cserél le. A HLSW nyitva maradhat; az új verzió a következő indításkor lép életbe. A hlswfix.ini fájlhoz nem nyúl hozzá."
+    STR_UPDATE_PAGE_ONLY    "Az a kiadás innen nem telepíthető, a lapról kell letölteni."
+    STR_UPDATE_PRIVACY      "Ez az ellenőrzés a HLSW indításakor egyszer fut le, egyetlen fájlt kér a GitHubtól, és semmit nem küld önről vagy erről a gépről. A hlswfix.ini fájlban az update_check = 0 sorral kikapcsolható."
+    STR_BTN_INSTALL         "Telepítés most\nLetölti és a helyére teszi. A HLSW tovább fut."
+    STR_BTN_PAGE            "Kiadási lap megnyitása\nMegnézni, mi változott, és magának letölteni."
+    STR_BTN_LATER           "Most nem"
+
+    STR_DOWNLOAD_FAILED     "A frissítést nem sikerült letölteni"
+    STR_DOWNLOAD_FAILED_WHY "Vagy nem fejeződött be a letöltés, vagy a megérkezett tartalom nem egyezik a kiadáshoz közzétett ellenőrzőösszeggel. Ezen a gépen semmi nem változott.\n\nUgyanaz az archívum kézzel is letölthető a kiadási lapról."
+    STR_UNPACK_FAILED       "A frissítést nem sikerült kicsomagolni"
+    STR_UNPACK_FAILED_WHY   "Az archívum hiánytalanul megérkezett, és egyezik a közzétett ellenőrzőösszegével, de a telepítendő két fájl nem a várt formában van benne. Ezen a gépen semmi nem változott.\n\nAz archívum kézzel is telepíthető a kiadási lapról."
+    STR_INSTALL_FAILED      "A frissítést nem sikerült telepíteni"
+    STR_INSTALL_FAILED_DLL  "A hlswfix.dll nem cserélhető le. Semmi nem változott. A legvalószínűbb ok, hogy ennek a fióknak nincs írási joga a HLSW mappájához."
+    STR_INSTALL_FAILED_EXE  "Az indítót nem sikerült lecserélni, ezért a hlswfix.dll visszaállt, és semmi nem változott. A legvalószínűbb ok, hogy ennek a fióknak nincs írási joga a HLSW mappájához."
+    STR_INSTALLED           "A frissítés telepítve"
+    STR_INSTALLED_WHY       "Zárja be a HLSW-t, és indítsa el újra, hogy az új verzió fusson. Több nem kell, és a hlswfix.ini pontosan úgy maradt, ahogy volt."
+}
+
+/* --------------------------------------------------------------- Dutch */
+LANGUAGE 0x13, 0x00
+STRINGTABLE
+{
+    STR_WINDOWS_ERROR       "Windows-fout %lu."
+    STR_START_FAILED        "HLSW kon niet worden gestart."
+    STR_NO_HLSW             "Er is geen HLSW gevonden naast dit programma.\r\n\r\nhlswfix.exe, hlswfix.dll en hlswfix.ini horen in de map waarin HLSW is geïnstalleerd, dus waar hlsw.exe staat."
+    STR_LAUNCHER_IS_HLSW    "hlsw.exe is deze starter, en hlsw-real.exe ontbreekt.\r\n\r\nWaarschijnlijk heeft een HLSW-update de starter overschreven. Voer install.ps1 opnieuw uit, of installeer HLSW opnieuw en voer het daarna uit."
+    STR_INJECT_FAILED       "hlswfix.dll kon niet in HLSW worden geladen.\r\n\r\nHLSW start toch, maar servers worden als time-out weergegeven."
+
+    STR_UPDATE_AVAILABLE    "hlswfix %s is beschikbaar"
+    STR_UPDATE_RUNNING      "Deze HLSW draait met hlswfix %s."
+    STR_UPDATE_WHAT_INSTALL "Installeren downloadt die versie, controleert die tegen de erbij gepubliceerde controlesom en vervangt twee bestanden. HLSW mag open blijven; de nieuwe versie neemt het over bij de volgende start. Uw hlswfix.ini blijft ongemoeid."
+    STR_UPDATE_PAGE_ONLY    "Die versie kan hier niet worden geïnstalleerd en moet van de pagina worden gehaald."
+    STR_UPDATE_PRIVACY      "Deze controle draait één keer bij het starten van HLSW, vraagt GitHub om één bestand en stuurt niets over u of deze machine. Zet update_check = 0 in hlswfix.ini om het uit te schakelen."
+    STR_BTN_INSTALL         "Nu installeren\nDownloadt het en zet het op zijn plaats. HLSW draait door."
+    STR_BTN_PAGE            "Releasepagina openen\nBekijken wat er is veranderd en zelf downloaden."
+    STR_BTN_LATER           "Niet nu"
+
+    STR_DOWNLOAD_FAILED     "De update kon niet worden gedownload"
+    STR_DOWNLOAD_FAILED_WHY "Of de download is niet voltooid, of wat binnenkwam kwam niet overeen met de bij de release gepubliceerde controlesom. Er is niets op deze machine gewijzigd.\n\nHetzelfde archief staat op de releasepagina om met de hand te downloaden."
+    STR_UNPACK_FAILED       "De update kon niet worden uitgepakt"
+    STR_UNPACK_FAILED_WHY   "Het archief kwam compleet binnen en klopt met zijn gepubliceerde controlesom, maar de twee bestanden die dit installeert zitten er niet in de verwachte vorm in. Er is niets op deze machine gewijzigd.\n\nHet archief staat op de releasepagina om met de hand te installeren."
+    STR_INSTALL_FAILED      "De update kon niet worden geïnstalleerd"
+    STR_INSTALL_FAILED_DLL  "hlswfix.dll kon niet worden vervangen. Er is niets gewijzigd. De waarschijnlijkste reden is dat dit account niet in de HLSW-map mag schrijven."
+    STR_INSTALL_FAILED_EXE  "De starter kon niet worden vervangen, dus hlswfix.dll is teruggezet en er is niets veranderd. De waarschijnlijkste reden is dat dit account niet in de HLSW-map mag schrijven."
+    STR_INSTALLED           "Update geïnstalleerd"
+    STR_INSTALLED_WHY       "Sluit HLSW en start het opnieuw om de nieuwe versie te draaien. Meer is niet nodig, en hlswfix.ini is precies gebleven zoals hij was."
+}
+
+/* ----------------------------------------------------------- Norwegian */
+LANGUAGE 0x14, 0x00
+STRINGTABLE
+{
+    STR_WINDOWS_ERROR       "Windows-feil %lu."
+    STR_START_FAILED        "HLSW kunne ikke startes."
+    STR_NO_HLSW             "Det ble ikke funnet noe HLSW ved siden av dette programmet.\r\n\r\nhlswfix.exe, hlswfix.dll og hlswfix.ini hører hjemme i mappen der HLSW er installert, altså der hlsw.exe ligger."
+    STR_LAUNCHER_IS_HLSW    "hlsw.exe er denne starteren, og hlsw-real.exe mangler.\r\n\r\nEn HLSW-oppdatering har mest sannsynlig overskrevet starteren. Kjør install.ps1 på nytt, eller installer HLSW på nytt og kjør den etterpå."
+    STR_INJECT_FAILED       "hlswfix.dll kunne ikke lastes inn i HLSW.\r\n\r\nHLSW starter likevel, men serverne vises som tidsavbrudd."
+
+    STR_UPDATE_AVAILABLE    "hlswfix %s er tilgjengelig"
+    STR_UPDATE_RUNNING      "Denne HLSW kjører med hlswfix %s."
+    STR_UPDATE_WHAT_INSTALL "Installering laster ned denne utgaven, kontrollerer den mot den publiserte kontrollsummen og erstatter to filer. HLSW kan stå åpen; den nye utgaven overtar neste gang den startes. Din hlswfix.ini røres ikke."
+    STR_UPDATE_PAGE_ONLY    "Den utgaven kan ikke installeres herfra og må lastes ned fra siden."
+    STR_UPDATE_PRIVACY      "Denne sjekken kjøres én gang når HLSW starter, ber GitHub om én fil og sender ingenting om deg eller denne maskinen. Skriv update_check = 0 i hlswfix.ini for å slå den av."
+    STR_BTN_INSTALL         "Installer nå\nLaster den ned og setter den på plass. HLSW kjører videre."
+    STR_BTN_PAGE            "Åpne utgivelsessiden\nSe hva som er endret, og last ned selv."
+    STR_BTN_LATER           "Ikke nå"
+
+    STR_DOWNLOAD_FAILED     "Oppdateringen kunne ikke lastes ned"
+    STR_DOWNLOAD_FAILED_WHY "Enten ble nedlastingen ikke fullført, eller det som kom fram stemte ikke med kontrollsummen som er publisert med utgaven. Ingenting på denne maskinen ble endret.\n\nSamme arkiv kan lastes ned for hånd fra utgivelsessiden."
+    STR_UNPACK_FAILED       "Oppdateringen kunne ikke pakkes ut"
+    STR_UNPACK_FAILED_WHY   "Arkivet kom fram komplett og stemmer med sin publiserte kontrollsum, men de to filene dette installerer ligger ikke i det på forventet form. Ingenting på denne maskinen ble endret.\n\nArkivet kan installeres for hånd fra utgivelsessiden."
+    STR_INSTALL_FAILED      "Oppdateringen kunne ikke installeres"
+    STR_INSTALL_FAILED_DLL  "hlswfix.dll kunne ikke erstattes. Ingenting ble endret. Den mest sannsynlige årsaken er at denne kontoen ikke har skriverett i HLSW-mappen."
+    STR_INSTALL_FAILED_EXE  "Starteren kunne ikke erstattes, så hlswfix.dll ble satt tilbake og ingenting er endret. Den mest sannsynlige årsaken er at denne kontoen ikke har skriverett i HLSW-mappen."
+    STR_INSTALLED           "Oppdatering installert"
+    STR_INSTALLED_WHY       "Lukk HLSW og start det igjen for å kjøre den nye utgaven. Mer skal det ikke til, og hlswfix.ini ble stående nøyaktig som den var."
+}
+
+/* -------------------------------------------------------------- Polish */
+LANGUAGE 0x15, 0x00
+STRINGTABLE
+{
+    STR_WINDOWS_ERROR       "Błąd systemu Windows %lu."
+    STR_START_FAILED        "Nie udało się uruchomić HLSW."
+    STR_NO_HLSW             "Obok tego programu nie znaleziono HLSW.\r\n\r\nPliki hlswfix.exe, hlswfix.dll i hlswfix.ini należą do folderu, w którym zainstalowany jest HLSW, czyli tam, gdzie leży hlsw.exe."
+    STR_LAUNCHER_IS_HLSW    "hlsw.exe to ten program uruchamiający, a hlsw-real.exe brakuje.\r\n\r\nNajprawdopodobniej aktualizacja HLSW nadpisała program uruchamiający. Uruchom ponownie install.ps1 albo zainstaluj HLSW od nowa i wtedy go uruchom."
+    STR_INJECT_FAILED       "Nie udało się wczytać hlswfix.dll do HLSW.\r\n\r\nHLSW i tak wystartuje, ale serwery będą pokazywane jako niedostępne."
+
+    STR_UPDATE_AVAILABLE    "Dostępna jest wersja hlswfix %s"
+    STR_UPDATE_RUNNING      "Ten HLSW działa z hlswfix %s."
+    STR_UPDATE_WHAT_INSTALL "Instalacja pobierze tę wersję, sprawdzi ją z opublikowaną sumą kontrolną i zastąpi dwa pliki. HLSW może pozostać otwarty; nowa wersja zacznie działać przy następnym uruchomieniu. Twój hlswfix.ini pozostaje nietknięty."
+    STR_UPDATE_PAGE_ONLY    "Tej wersji nie da się zainstalować stąd, trzeba ją pobrać ze strony."
+    STR_UPDATE_PRIVACY      "To sprawdzenie odbywa się raz przy starcie HLSW, prosi GitHub o jeden plik i nie wysyła niczego o Tobie ani o tym komputerze. Wpisz update_check = 0 w hlswfix.ini, aby je wyłączyć."
+    STR_BTN_INSTALL         "Zainstaluj teraz\nPobiera ją i wstawia na miejsce. HLSW działa dalej."
+    STR_BTN_PAGE            "Otwórz stronę wydania\nZobacz, co się zmieniło, i pobierz samodzielnie."
+    STR_BTN_LATER           "Nie teraz"
+
+    STR_DOWNLOAD_FAILED     "Nie udało się pobrać aktualizacji"
+    STR_DOWNLOAD_FAILED_WHY "Albo pobieranie się nie zakończyło, albo to, co dotarło, nie zgadza się z sumą kontrolną opublikowaną przy wydaniu. Na tym komputerze nic nie zostało zmienione.\n\nTo samo archiwum można pobrać ręcznie ze strony wydania."
+    STR_UNPACK_FAILED       "Nie udało się rozpakować aktualizacji"
+    STR_UNPACK_FAILED_WHY   "Archiwum dotarło w całości i zgadza się z opublikowaną sumą kontrolną, ale dwóch instalowanych plików nie ma w nim w oczekiwanej postaci. Na tym komputerze nic nie zostało zmienione.\n\nArchiwum można zainstalować ręcznie ze strony wydania."
+    STR_INSTALL_FAILED      "Nie udało się zainstalować aktualizacji"
+    STR_INSTALL_FAILED_DLL  "Nie udało się zastąpić hlswfix.dll. Nic nie zostało zmienione. Najbardziej prawdopodobną przyczyną jest brak prawa zapisu tego konta do folderu HLSW."
+    STR_INSTALL_FAILED_EXE  "Nie udało się zastąpić programu uruchamiającego, więc hlswfix.dll został przywrócony i nic się nie zmieniło. Najbardziej prawdopodobną przyczyną jest brak prawa zapisu tego konta do folderu HLSW."
+    STR_INSTALLED           "Aktualizacja zainstalowana"
+    STR_INSTALLED_WHY       "Zamknij HLSW i uruchom go ponownie, aby działała nowa wersja. Nic więcej nie trzeba, a hlswfix.ini pozostał dokładnie taki, jaki był."
+}
+
+/* ---------------------------------------------------------- Portuguese */
+LANGUAGE 0x16, 0x00
+STRINGTABLE
+{
+    STR_WINDOWS_ERROR       "Erro do Windows %lu."
+    STR_START_FAILED        "Não foi possível iniciar o HLSW."
+    STR_NO_HLSW             "Não foi encontrado nenhum HLSW ao lado deste programa.\r\n\r\nO hlswfix.exe, o hlswfix.dll e o hlswfix.ini pertencem à pasta onde o HLSW está instalado, ou seja, onde está o hlsw.exe."
+    STR_LAUNCHER_IS_HLSW    "O hlsw.exe é este iniciador e falta o hlsw-real.exe.\r\n\r\nO mais provável é que uma atualização do HLSW tenha substituído o iniciador. Execute o install.ps1 outra vez, ou reinstale o HLSW e execute-o depois."
+    STR_INJECT_FAILED       "Não foi possível carregar o hlswfix.dll no HLSW.\r\n\r\nO HLSW arranca à mesma, mas os servidores aparecerão como sem resposta."
+
+    STR_UPDATE_AVAILABLE    "O hlswfix %s está disponível"
+    STR_UPDATE_RUNNING      "Este HLSW está a usar o hlswfix %s."
+    STR_UPDATE_WHAT_INSTALL "Instalar transfere essa versão, verifica-a com a soma de controlo publicada com ela e substitui dois ficheiros. O HLSW pode ficar aberto; a nova versão passa a valer no arranque seguinte. O seu hlswfix.ini fica intocado."
+    STR_UPDATE_PAGE_ONLY    "Essa versão não pode ser instalada a partir daqui, tem de ser transferida da página."
+    STR_UPDATE_PRIVACY      "Esta verificação corre uma vez ao iniciar o HLSW, pede um ficheiro ao GitHub e não envia nada sobre si nem sobre esta máquina. Ponha update_check = 0 no hlswfix.ini para a desligar."
+    STR_BTN_INSTALL         "Instalar agora\nTransfere-a e coloca-a no lugar. O HLSW continua a correr."
+    STR_BTN_PAGE            "Abrir a página da versão\nVer o que mudou e transferir por si próprio."
+    STR_BTN_LATER           "Agora não"
+
+    STR_DOWNLOAD_FAILED     "Não foi possível transferir a atualização"
+    STR_DOWNLOAD_FAILED_WHY "Ou a transferência não terminou, ou o que chegou não corresponde à soma de controlo publicada com a versão. Nada foi alterado nesta máquina.\n\nA página da versão tem o mesmo arquivo para transferir à mão."
+    STR_UNPACK_FAILED       "Não foi possível descompactar a atualização"
+    STR_UNPACK_FAILED_WHY   "O arquivo chegou completo e corresponde à soma de controlo publicada, mas os dois ficheiros a instalar não estão nele na forma esperada. Nada foi alterado nesta máquina.\n\nA página da versão tem o arquivo para instalar à mão."
+    STR_INSTALL_FAILED      "Não foi possível instalar a atualização"
+    STR_INSTALL_FAILED_DLL  "Não foi possível substituir o hlswfix.dll. Nada foi alterado. A razão mais provável é esta conta não ter permissão de escrita na pasta do HLSW."
+    STR_INSTALL_FAILED_EXE  "Não foi possível substituir o iniciador, por isso o hlswfix.dll foi reposto e nada mudou. A razão mais provável é esta conta não ter permissão de escrita na pasta do HLSW."
+    STR_INSTALLED           "Atualização instalada"
+    STR_INSTALLED_WHY       "Feche o HLSW e abra-o de novo para usar a nova versão. Não é preciso mais nada, e o hlswfix.ini ficou exatamente como estava."
+}
+
+/* ------------------------------------------------------------- Russian */
+LANGUAGE 0x19, 0x00
+STRINGTABLE
+{
+    STR_WINDOWS_ERROR       "Ошибка Windows %lu."
+    STR_START_FAILED        "Не удалось запустить HLSW."
+    STR_NO_HLSW             "Рядом с этой программой не найден HLSW.\r\n\r\nФайлы hlswfix.exe, hlswfix.dll и hlswfix.ini должны лежать в папке, куда установлен HLSW, то есть там же, где hlsw.exe."
+    STR_LAUNCHER_IS_HLSW    "hlsw.exe и есть этот запускающий файл, а hlsw-real.exe отсутствует.\r\n\r\nСкорее всего, обновление HLSW перезаписало его. Запустите install.ps1 ещё раз или переустановите HLSW и запустите install.ps1 после."
+    STR_INJECT_FAILED       "Не удалось загрузить hlswfix.dll в HLSW.\r\n\r\nHLSW всё равно запустится, но серверы будут показаны как недоступные."
+
+    STR_UPDATE_AVAILABLE    "Доступна версия hlswfix %s"
+    STR_UPDATE_RUNNING      "Этот HLSW работает с hlswfix %s."
+    STR_UPDATE_WHAT_INSTALL "Установка скачает этот выпуск, сверит его с опубликованной контрольной суммой и заменит два файла. HLSW может остаться открытым; новая версия вступит в силу при следующем запуске. Ваш hlswfix.ini останется нетронутым."
+    STR_UPDATE_PAGE_ONLY    "Этот выпуск нельзя установить отсюда, его нужно скачать со страницы."
+    STR_UPDATE_PRIVACY      "Эта проверка выполняется один раз при запуске HLSW, запрашивает у GitHub один файл и не отправляет ничего о вас или об этом компьютере. Строка update_check = 0 в hlswfix.ini выключает её."
+    STR_BTN_INSTALL         "Установить сейчас\nСкачает и поставит на место. HLSW продолжит работать."
+    STR_BTN_PAGE            "Открыть страницу выпуска\nПосмотреть, что изменилось, и скачать самостоятельно."
+    STR_BTN_LATER           "Не сейчас"
+
+    STR_DOWNLOAD_FAILED     "Не удалось скачать обновление"
+    STR_DOWNLOAD_FAILED_WHY "Либо загрузка не завершилась, либо полученное не совпало с контрольной суммой, опубликованной вместе с выпуском. На этом компьютере ничего не изменилось.\n\nТот же архив можно скачать вручную со страницы выпуска."
+    STR_UNPACK_FAILED       "Не удалось распаковать обновление"
+    STR_UNPACK_FAILED_WHY   "Архив пришёл целиком и совпал с опубликованной контрольной суммой, но два устанавливаемых файла лежат в нём не в том виде, который ожидается. На этом компьютере ничего не изменилось.\n\nАрхив можно установить вручную со страницы выпуска."
+    STR_INSTALL_FAILED      "Не удалось установить обновление"
+    STR_INSTALL_FAILED_DLL  "Не удалось заменить hlswfix.dll. Ничего не изменилось. Вероятнее всего, у этой учётной записи нет права записи в папку HLSW."
+    STR_INSTALL_FAILED_EXE  "Не удалось заменить запускающий файл, поэтому hlswfix.dll возвращён на место и ничего не изменилось. Вероятнее всего, у этой учётной записи нет права записи в папку HLSW."
+    STR_INSTALLED           "Обновление установлено"
+    STR_INSTALLED_WHY       "Закройте HLSW и запустите его снова, чтобы работала новая версия. Больше ничего не нужно, а hlswfix.ini остался ровно таким, каким был."
+}
+
+/* -------------------------------------------------------------- Slovak */
+LANGUAGE 0x1B, 0x00
+STRINGTABLE
+{
+    STR_WINDOWS_ERROR       "Chyba Windows %lu."
+    STR_START_FAILED        "HLSW sa nepodarilo spustiť."
+    STR_NO_HLSW             "Vedľa tohto programu sa nenašiel žiadny HLSW.\r\n\r\nSúbory hlswfix.exe, hlswfix.dll a hlswfix.ini patria do priečinka, kde je HLSW nainštalovaný, teda tam, kde je hlsw.exe."
+    STR_LAUNCHER_IS_HLSW    "hlsw.exe je tento spúšťač a hlsw-real.exe chýba.\r\n\r\nSpúšťač zrejme prepísala aktualizácia HLSW. Spustite install.ps1 znova, alebo HLSW preinštalujte a potom ho spustite."
+    STR_INJECT_FAILED       "Súbor hlswfix.dll sa nepodarilo načítať do HLSW.\r\n\r\nHLSW sa aj tak spustí, ale servery sa budú zobrazovať ako nedostupné."
+
+    STR_UPDATE_AVAILABLE    "hlswfix %s je k dispozícii"
+    STR_UPDATE_RUNNING      "Tento HLSW beží s hlswfix %s."
+    STR_UPDATE_WHAT_INSTALL "Inštalácia stiahne toto vydanie, overí ho oproti zverejnenému kontrolnému súčtu a nahradí dva súbory. HLSW môže zostať otvorený; nová verzia sa uplatní pri ďalšom spustení. Váš hlswfix.ini zostane nedotknutý."
+    STR_UPDATE_PAGE_ONLY    "Toto vydanie sa odtiaľto nedá nainštalovať, treba ho stiahnuť zo stránky."
+    STR_UPDATE_PRIVACY      "Táto kontrola prebehne raz pri spustení HLSW, vyžiada si od GitHubu jeden súbor a neodosiela nič o vás ani o tomto počítači. Vypnete ju riadkom update_check = 0 v hlswfix.ini."
+    STR_BTN_INSTALL         "Nainštalovať teraz\nStiahne ho a nasadí. HLSW beží ďalej."
+    STR_BTN_PAGE            "Otvoriť stránku vydania\nPozrieť sa, čo sa zmenilo, a stiahnuť ručne."
+    STR_BTN_LATER           "Teraz nie"
+
+    STR_DOWNLOAD_FAILED     "Aktualizáciu sa nepodarilo stiahnuť"
+    STR_DOWNLOAD_FAILED_WHY "Buď sa sťahovanie nedokončilo, alebo to, čo prišlo, nezodpovedá kontrolnému súčtu zverejnenému s vydaním. Na tomto počítači sa nič nezmenilo.\n\nRovnaký archív je na stiahnutie ručne na stránke vydania."
+    STR_UNPACK_FAILED       "Aktualizáciu sa nepodarilo rozbaliť"
+    STR_UNPACK_FAILED_WHY   "Archív prišiel celý a zodpovedá zverejnenému kontrolnému súčtu, ale dva inštalované súbory v ňom nie sú v očakávanej podobe. Na tomto počítači sa nič nezmenilo.\n\nArchív sa dá nainštalovať ručne zo stránky vydania."
+    STR_INSTALL_FAILED      "Aktualizáciu sa nepodarilo nainštalovať"
+    STR_INSTALL_FAILED_DLL  "Súbor hlswfix.dll sa nepodarilo nahradiť. Nič sa nezmenilo. Najpravdepodobnejším dôvodom je, že tento účet nemá právo zápisu do priečinka HLSW."
+    STR_INSTALL_FAILED_EXE  "Spúšťač sa nepodarilo nahradiť, preto bol hlswfix.dll vrátený späť a nič sa nezmenilo. Najpravdepodobnejším dôvodom je, že tento účet nemá právo zápisu do priečinka HLSW."
+    STR_INSTALLED           "Aktualizácia nainštalovaná"
+    STR_INSTALLED_WHY       "Zavrite HLSW a spustite ho znova, aby bežala nová verzia. Nič iné netreba a hlswfix.ini zostal presne taký, aký bol."
+}
+
+/* ------------------------------------------------------------- Swedish */
+LANGUAGE 0x1D, 0x00
+STRINGTABLE
+{
+    STR_WINDOWS_ERROR       "Windows-fel %lu."
+    STR_START_FAILED        "HLSW kunde inte startas."
+    STR_NO_HLSW             "Det hittades inget HLSW bredvid det här programmet.\r\n\r\nhlswfix.exe, hlswfix.dll och hlswfix.ini hör hemma i mappen där HLSW är installerat, alltså där hlsw.exe ligger."
+    STR_LAUNCHER_IS_HLSW    "hlsw.exe är den här startaren, och hlsw-real.exe saknas.\r\n\r\nEn HLSW-uppdatering har med största sannolikhet skrivit över startaren. Kör install.ps1 igen, eller installera om HLSW och kör den sedan."
+    STR_INJECT_FAILED       "hlswfix.dll kunde inte läsas in i HLSW.\r\n\r\nHLSW startar ändå, men servrarna visas som tidsgräns överskriden."
+
+    STR_UPDATE_AVAILABLE    "hlswfix %s finns tillgänglig"
+    STR_UPDATE_RUNNING      "Det här HLSW kör med hlswfix %s."
+    STR_UPDATE_WHAT_INSTALL "Installation hämtar den utgåvan, kontrollerar den mot den publicerade kontrollsumman och ersätter två filer. HLSW kan stå öppet; den nya versionen tar över nästa gång det startas. Din hlswfix.ini lämnas orörd."
+    STR_UPDATE_PAGE_ONLY    "Den utgåvan går inte att installera härifrån utan måste hämtas från sidan."
+    STR_UPDATE_PRIVACY      "Den här kontrollen körs en gång när HLSW startar, ber GitHub om en fil och skickar ingenting om dig eller den här datorn. Skriv update_check = 0 i hlswfix.ini för att stänga av den."
+    STR_BTN_INSTALL         "Installera nu\nHämtar den och sätter den på plats. HLSW fortsätter att köra."
+    STR_BTN_PAGE            "Öppna utgåvans sida\nSe vad som ändrats och hämta själv."
+    STR_BTN_LATER           "Inte nu"
+
+    STR_DOWNLOAD_FAILED     "Uppdateringen kunde inte hämtas"
+    STR_DOWNLOAD_FAILED_WHY "Antingen blev hämtningen inte klar, eller så stämde det som kom fram inte med kontrollsumman som publicerats med utgåvan. Ingenting på den här datorn ändrades.\n\nSamma arkiv finns att hämta för hand på utgåvans sida."
+    STR_UNPACK_FAILED       "Uppdateringen kunde inte packas upp"
+    STR_UNPACK_FAILED_WHY   "Arkivet kom fram komplett och stämmer med sin publicerade kontrollsumma, men de två filer som installeras ligger inte i det i väntad form. Ingenting på den här datorn ändrades.\n\nArkivet finns att installera för hand på utgåvans sida."
+    STR_INSTALL_FAILED      "Uppdateringen kunde inte installeras"
+    STR_INSTALL_FAILED_DLL  "hlswfix.dll kunde inte ersättas. Ingenting ändrades. Den troligaste orsaken är att det här kontot inte får skriva i HLSW-mappen."
+    STR_INSTALL_FAILED_EXE  "Startaren kunde inte ersättas, så hlswfix.dll sattes tillbaka och ingenting har ändrats. Den troligaste orsaken är att det här kontot inte får skriva i HLSW-mappen."
+    STR_INSTALLED           "Uppdateringen installerad"
+    STR_INSTALLED_WHY       "Stäng HLSW och starta det igen för att köra den nya versionen. Mer behövs inte, och hlswfix.ini lämnades exakt som den var."
+}
+
+/* ------------------------------------------------------------- Turkish */
+LANGUAGE 0x1F, 0x00
+STRINGTABLE
+{
+    STR_WINDOWS_ERROR       "Windows hatası %lu."
+    STR_START_FAILED        "HLSW başlatılamadı."
+    STR_NO_HLSW             "Bu programın yanında HLSW bulunamadı.\r\n\r\nhlswfix.exe, hlswfix.dll ve hlswfix.ini dosyaları HLSW'nin kurulu olduğu klasöre, yani hlsw.exe'nin bulunduğu yere aittir."
+    STR_LAUNCHER_IS_HLSW    "hlsw.exe bu başlatıcının kendisi ve hlsw-real.exe eksik.\r\n\r\nBüyük olasılıkla bir HLSW güncellemesi başlatıcının üzerine yazdı. install.ps1 dosyasını yeniden çalıştırın veya HLSW'yi yeniden kurup ardından çalıştırın."
+    STR_INJECT_FAILED       "hlswfix.dll, HLSW içine yüklenemedi.\r\n\r\nHLSW yine de açılır, ancak sunucular zaman aşımı olarak görünür."
+
+    STR_UPDATE_AVAILABLE    "hlswfix %s kullanılabilir"
+    STR_UPDATE_RUNNING      "Bu HLSW, hlswfix %s ile çalışıyor."
+    STR_UPDATE_WHAT_INSTALL "Kurmak, o sürümü indirir, birlikte yayımlanan sağlama toplamıyla karşılaştırır ve iki dosyayı değiştirir. HLSW açık kalabilir; yeni sürüm bir sonraki açılışta devreye girer. hlswfix.ini dosyanıza dokunulmaz."
+    STR_UPDATE_PAGE_ONLY    "O sürüm buradan kurulamaz, sayfadan indirilmesi gerekir."
+    STR_UPDATE_PRIVACY      "Bu denetim HLSW açılırken bir kez çalışır, GitHub'dan tek bir dosya ister ve sizinle ya da bu bilgisayarla ilgili hiçbir şey göndermez. Kapatmak için hlswfix.ini içine update_check = 0 yazın."
+    STR_BTN_INSTALL         "Şimdi kur\nİndirir ve yerine koyar. HLSW çalışmaya devam eder."
+    STR_BTN_PAGE            "Sürüm sayfasını aç\nNelerin değiştiğini görün ve kendiniz indirin."
+    STR_BTN_LATER           "Şimdi değil"
+
+    STR_DOWNLOAD_FAILED     "Güncelleme indirilemedi"
+    STR_DOWNLOAD_FAILED_WHY "Ya indirme tamamlanmadı ya da gelen içerik sürümle birlikte yayımlanan sağlama toplamıyla uyuşmadı. Bu bilgisayarda hiçbir şey değiştirilmedi.\n\nAynı arşiv sürüm sayfasından elle indirilebilir."
+    STR_UNPACK_FAILED       "Güncelleme açılamadı"
+    STR_UNPACK_FAILED_WHY   "Arşiv eksiksiz ulaştı ve yayımlanan sağlama toplamıyla uyuştu, ancak kurulacak iki dosya arşivde beklenen biçimde değil. Bu bilgisayarda hiçbir şey değiştirilmedi.\n\nArşiv sürüm sayfasından elle kurulabilir."
+    STR_INSTALL_FAILED      "Güncelleme kurulamadı"
+    STR_INSTALL_FAILED_DLL  "hlswfix.dll değiştirilemedi. Hiçbir şey değiştirilmedi. En olası neden, bu hesabın HLSW klasörüne yazma yetkisinin olmamasıdır."
+    STR_INSTALL_FAILED_EXE  "Başlatıcı değiştirilemedi, bu yüzden hlswfix.dll eski haline döndürüldü ve hiçbir şey değişmedi. En olası neden, bu hesabın HLSW klasörüne yazma yetkisinin olmamasıdır."
+    STR_INSTALLED           "Güncelleme kuruldu"
+    STR_INSTALLED_WHY       "Yeni sürümün çalışması için HLSW'yi kapatıp yeniden açın. Başka bir şey gerekmez ve hlswfix.ini tam olarak olduğu gibi kaldı."
+}
+
+#endif /* !BUILD_DLL */
+
+/* ------------------------------------------------------- the library */
+
+/* The one text hlswfix.dll ever shows. It sits here, under an id of its own
+ * far from the others so that it lands in a string block of its own, because
+ * otherwise the library would have to carry all seventeen languages of a
+ * dialog it never opens: sixty eight kilobytes for one sentence. Nothing is
+ * duplicated, this text belongs to the library and the ones above belong to
+ * the launcher. */
+#ifdef BUILD_DLL
+LANGUAGE 0x09, 0x00
+STRINGTABLE
+{
+    STR_HOOKS_FAILED        "hlswfix could not redirect the winsock functions it needs.\r\nHLSW will run, but servers will show as timed out."
+}
+LANGUAGE 0x07, 0x00
+STRINGTABLE
+{
+    STR_HOOKS_FAILED        "hlswfix konnte die benötigten Winsock-Funktionen nicht umleiten.\r\nHLSW läuft, aber die Server werden als Zeitüberschreitung angezeigt."
+}
+LANGUAGE 0x04, 0x00
+STRINGTABLE
+{
+    STR_HOOKS_FAILED        "hlswfix 无法重定向它需要的 winsock 函数。\r\nHLSW 可以运行，但服务器会显示为超时。"
+}
+LANGUAGE 0x05, 0x00
+STRINGTABLE
+{
+    STR_HOOKS_FAILED        "hlswfix nedokázal přesměrovat potřebné funkce winsock.\r\nHLSW poběží, ale servery se budou zobrazovat jako nedostupné."
+}
+LANGUAGE 0x06, 0x00
+STRINGTABLE
+{
+    STR_HOOKS_FAILED        "hlswfix kunne ikke omdirigere de winsock-funktioner, den har brug for.\r\nHLSW kører, men serverne vil blive vist som timeout."
+}
+LANGUAGE 0x0A, 0x00
+STRINGTABLE
+{
+    STR_HOOKS_FAILED        "hlswfix no pudo redirigir las funciones de winsock que necesita.\r\nHLSW funcionará, pero los servidores aparecerán como agotados."
+}
+LANGUAGE 0x0B, 0x00
+STRINGTABLE
+{
+    STR_HOOKS_FAILED        "hlswfix ei saanut ohjattua tarvitsemiaan winsock-funktioita.\r\nHLSW toimii, mutta palvelimet näkyvät aikakatkaistuina."
+}
+LANGUAGE 0x0C, 0x00
+STRINGTABLE
+{
+    STR_HOOKS_FAILED        "hlswfix n'a pas pu rediriger les fonctions winsock dont il a besoin.\r\nHLSW fonctionnera, mais les serveurs apparaîtront comme injoignables."
+}
+LANGUAGE 0x0E, 0x00
+STRINGTABLE
+{
+    STR_HOOKS_FAILED        "A hlswfix nem tudta átirányítani a szükséges winsock-függvényeket.\r\nA HLSW működni fog, de a kiszolgálók időtúllépésként jelennek meg."
+}
+LANGUAGE 0x13, 0x00
+STRINGTABLE
+{
+    STR_HOOKS_FAILED        "hlswfix kon de benodigde winsock-functies niet omleiden.\r\nHLSW werkt, maar servers worden als time-out weergegeven."
+}
+LANGUAGE 0x14, 0x00
+STRINGTABLE
+{
+    STR_HOOKS_FAILED        "hlswfix klarte ikke å omdirigere winsock-funksjonene den trenger.\r\nHLSW kjører, men serverne vises som tidsavbrudd."
+}
+LANGUAGE 0x15, 0x00
+STRINGTABLE
+{
+    STR_HOOKS_FAILED        "hlswfix nie zdołał przekierować potrzebnych funkcji winsock.\r\nHLSW będzie działać, ale serwery będą pokazywane jako niedostępne."
+}
+LANGUAGE 0x16, 0x00
+STRINGTABLE
+{
+    STR_HOOKS_FAILED        "O hlswfix não conseguiu redirecionar as funções winsock de que precisa.\r\nO HLSW vai funcionar, mas os servidores aparecerão como sem resposta."
+}
+LANGUAGE 0x19, 0x00
+STRINGTABLE
+{
+    STR_HOOKS_FAILED        "hlswfix не смог перенаправить нужные ему функции winsock.\r\nHLSW будет работать, но серверы будут показаны как недоступные."
+}
+LANGUAGE 0x1B, 0x00
+STRINGTABLE
+{
+    STR_HOOKS_FAILED        "hlswfix nedokázal presmerovať potrebné funkcie winsock.\r\nHLSW pobeží, ale servery sa budú zobrazovať ako nedostupné."
+}
+LANGUAGE 0x1D, 0x00
+STRINGTABLE
+{
+    STR_HOOKS_FAILED        "hlswfix kunde inte omdirigera de winsock-funktioner som behövs.\r\nHLSW fungerar, men servrarna visas som tidsgräns överskriden."
+}
+LANGUAGE 0x1F, 0x00
+STRINGTABLE
+{
+    STR_HOOKS_FAILED        "hlswfix, ihtiyaç duyduğu winsock işlevlerini yönlendiremedi.\r\nHLSW çalışır, ancak sunucular zaman aşımı olarak görünür."
+}
+#endif

@@ -17,7 +17,7 @@ und legt Dateien daneben, und mehr fasst er nicht an.
 
 1. Zuerst HLSW installieren. Falls du es nicht hast, siehe
    [HLSW beschaffen](#hlsw-beschaffen) weiter unten.
-2. `hlswfix-1.7.2.0.zip` von der [Releases-Seite][releases] laden. Nicht über den
+2. `hlswfix-1.8.0.0.zip` von der [Releases-Seite][releases] laden. Nicht über den
    grünen **Code**-Knopf: der gibt dir die Quellen ohne die gebauten Dateien.
 3. Irgendwohin entpacken und HLSW schließen, falls es läuft.
 4. Doppelklick auf **`install.cmd`**.
@@ -284,7 +284,7 @@ Alles in `hlswfix.ini` ist optional, die Datei selbst eingeschlossen. Der Fix
 braucht keine Konfiguration. Die Kommentare in der Datei erklären jede
 Einstellung, drei sind es wert, hier wiederholt zu werden.
 
-**`title_version`** ist der Grund, warum in der Titelzeile **HLSW v1.7.2.0**
+**`title_version`** ist der Grund, warum in der Titelzeile **HLSW v1.8.0.0**
 steht. Die letzte Version der Entwickler war 1.4.0.5 aus dem Jahr 2011, und die
 neue Nummer sagt auf einen Blick, dass in diesem HLSW der Fix steckt. Setzen
 musst du sie nicht: ohne die Zeile wird die Version des Fixes selbst angezeigt,
@@ -370,6 +370,34 @@ auf, du kannst also prüfen, ob das Heruntergeladene das Veröffentlichte ist.
 Beachte, dass ein Bau aus den Quellen diese Bytes nicht exakt reproduziert,
 weil der Compiler jeden Bau stempelt: selbst bauen ist ein Ersatz für die
 Prüfsummen, keine Gegenprobe.
+
+## Es spricht die Sprache von HLSW
+
+Alles, was hlswfix auf den Bildschirm bringt, gibt es in den siebzehn Sprachen,
+die HLSW selbst mitbringt: Chinesisch, Dänisch, Deutsch, Englisch, Finnisch,
+Französisch, Niederländisch, Norwegisch, Polnisch, Portugiesisch, Russisch,
+Schwedisch, Slowakisch, Spanisch, Tschechisch, Türkisch und Ungarisch.
+
+**Maßgeblich ist die Einstellung von HLSW, nicht die von Windows.** HLSW merkt
+sich seine Wahl in `HKCU\Software\HLSW\Settings\Language` und benennt seine
+eigenen Dateien in `cfg\language` nach derselben Nummer. Unsere Dialoge
+erscheinen in HLSW und gehören zu seinem Fenster, also soll jemand, der HLSW auf
+Deutsch gestellt hat, nicht auf Englisch angesprochen werden, bloß weil Windows
+englisch ist. Wurde HLSW nie gefragt, entscheidet die Windows-Sprache, und gibt
+es für keine von beiden eine Tabelle, dann Englisch.
+
+Die Texte liegen in den Stringtabellen der beiden Programmdateien, also genau
+dort, wo Windows sie vorsieht: keine zusätzliche Datei im Ordner, nichts, was
+geparst werden muss, und der Updater trägt sie mit, ohne von ihnen zu wissen.
+Sie stehen in [src/strings.rc](src/strings.rc), ein Block pro Sprache, und eine
+zu ergänzen oder zu verbessern heißt, diese Datei zu bearbeiten und neu zu
+bauen. Fehlt in einer Sprache ein Text, greift für genau diesen Text Englisch,
+eine halbfertige Übersetzung ergibt also nie einen leeren Dialog.
+
+Die beiden Dateien tragen absichtlich unterschiedliche Texte. Der Launcher hat
+die zweiundzwanzig, die er zeigen kann, die Bibliothek den einen, den sie
+überhaupt zeigen kann. Siebzehn Sprachen eines Update-Dialogs in einer
+Bibliothek, die keine Dialoge hat, wären achtundsechzig Kilobyte für nichts.
 
 ## Selbst bauen
 
