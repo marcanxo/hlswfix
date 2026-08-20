@@ -813,6 +813,78 @@ static int swap_in(const char *path, const void *data, DWORD len)
     return 1;
 }
 
+/* The same for the launcher, which is a harder case than it looks.
+ *
+ * The launcher wears HLSW's icon: it takes the place of hlsw.exe, so every
+ * shortcut would otherwise show the blank default. That icon is not shipped,
+ * it is stamped in at install time out of the user's own copy of HLSW, so a
+ * fresh launcher off GitHub has to be stamped again here.
+ *
+ * The obvious order, write the new launcher over our own name and then stamp
+ * it, is wrong, and wrong in a way that looks like it worked. While this
+ * process is running from that path, the version and resource calls read the
+ * image that is loaded rather than the bytes now on disk, so
+ * BeginUpdateResource copies the resources of the OLD launcher into the new
+ * file. The new file then carries the old version number. Everything reports
+ * success, the update is genuinely installed, and at the next start the
+ * launcher reads its own version, sees the old one, and offers the same update
+ * again. Forever. Measured exactly like that: content replaced, 108485 bytes,
+ * version still the old one.
+ *
+ * So the new launcher is built under a name of its own first, where nothing is
+ * running and the stamping lands in the right bytes, and only then moved into
+ * place. Two renames and no rewrite at the end, so there is no moment where
+ * the name exists with half a file behind it. */
+static int install_launcher(const char *path, const void *data, DWORD len,
+                            const char *icon_from)
+{
+    char fresh[PATHBUF + 8], aside[PATHBUF + 8];
+    HANDLE fh;
+    DWORD written = 0;
+
+    snprintf(fresh, sizeof(fresh), "%s.new", path);
+    snprintf(aside, sizeof(aside), "%s.old", path);
+    DeleteFileA(fresh);
+
+    fh = CreateFileA(fresh, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
+                     FILE_ATTRIBUTE_NORMAL, NULL);
+    if (fh == INVALID_HANDLE_VALUE) {
+        launcher_log("update: %s could not be written, error %lu", fresh, GetLastError());
+        return 0;
+    }
+    if (!WriteFile(fh, data, len, &written, NULL) || written != len) {
+        launcher_log("update: %s was written short, error %lu", fresh, GetLastError());
+        CloseHandle(fh);
+        DeleteFileA(fresh);
+        return 0;
+    }
+    CloseHandle(fh);
+
+    /* Nothing is running from this name, so the icon goes into these bytes and
+     * the version resource that came with them stays as it is. Failing is not
+     * fatal: a launcher with the default icon still works. */
+    if (icon_from && icon_from[0]
+        && GetFileAttributesA(icon_from) != INVALID_FILE_ATTRIBUTES
+        && !copy_icon(icon_from, fresh))
+        launcher_log("update: the new launcher could not be given HLSW's icon, "
+                     "which is only cosmetic");
+
+    DeleteFileA(aside);
+    if (!MoveFileA(path, aside)) {
+        launcher_log("update: %s could not be moved aside, error %lu", path, GetLastError());
+        DeleteFileA(fresh);
+        return 0;
+    }
+    if (!MoveFileA(fresh, path)) {
+        launcher_log("update: %s could not be moved into place, error %lu", fresh,
+                     GetLastError());
+        MoveFileA(aside, path);
+        DeleteFileA(fresh);
+        return 0;
+    }
+    return 1;
+}
+
 static void swap_back(const char *path)
 {
     char aside[PATHBUF + 8];
@@ -831,6 +903,10 @@ static void clean_up_after_update(const char *dir, const char *self)
     snprintf(path, sizeof(path), "%shlswfix.dll.old", dir);
     DeleteFileA(path);
     snprintf(path, sizeof(path), "%s.old", self);
+    DeleteFileA(path);
+    /* And the half finished one, if an update was interrupted between writing
+     * the new launcher and moving it into place. */
+    snprintf(path, sizeof(path), "%s.new", self);
     DeleteFileA(path);
 }
 
@@ -1444,7 +1520,7 @@ static DWORD WINAPI check_update(LPVOID unused)
              L"reason is that the HLSW folder is not writable by this account.", 1);
         return 0;
     }
-    if (!swap_in(g_self, exe_data, exe_len)) {
+    if (!install_launcher(g_self, exe_data, exe_len, g_hlsw_real)) {
         swap_back(dll_path);
         free(dll_data);
         free(exe_data);
@@ -1457,14 +1533,6 @@ static DWORD WINAPI check_update(LPVOID unused)
 
     free(dll_data);
     free(exe_data);
-
-    /* The launcher wears HLSW's icon, which is stamped into it at install time
-     * out of the user's own copy of HLSW rather than shipped with us. A fresh
-     * one off GitHub has the plain icon, so it is stamped again here. The file
-     * just written is not the one that is running, so it can be opened for
-     * writing; the running image lives under the .old name now. */
-    if (g_hlsw_real[0] && GetFileAttributesA(g_hlsw_real) != INVALID_FILE_ATTRIBUTES)
-        copy_icon(g_hlsw_real, g_self);
 
     launcher_log("update: %s installed", tag);
     tell(parent, L"Update installed",

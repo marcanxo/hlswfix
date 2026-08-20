@@ -16,7 +16,7 @@ whole of what it touches.
 
 1. Install HLSW first. If you do not have it, see [Getting HLSW](#getting-hlsw)
    below.
-2. Download `hlswfix-1.7.1.0.zip` from the [releases page][releases]. Not the
+2. Download `hlswfix-1.7.2.0.zip` from the [releases page][releases]. Not the
    green **Code** button: that gives you the sources without the built files.
 3. Unpack it anywhere and close HLSW if it is running.
 4. Double click **`install.cmd`**.
@@ -260,7 +260,7 @@ Everything in `hlswfix.ini` is optional, including the file itself. The fix
 needs no configuration. The comments in the file explain each setting; three
 are worth repeating here.
 
-**`title_version`** is why the title bar says **HLSW v1.7.1.0**. The developers'
+**`title_version`** is why the title bar says **HLSW v1.7.2.0**. The developers'
 last release was 1.4.0.5 in 2011, and the new number says at a glance that this
 HLSW has the fix in it. You do not have to set it: with the line left out, the
 version of the fix itself is shown, read from its own file, so it stays right
