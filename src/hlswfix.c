@@ -1639,6 +1639,29 @@ static void turn_off_login_screen(void)
     dbg_log("login on startup switched off");
 }
 
+/* HLSW looks for updates of itself at every start, at servers that stopped
+ * answering years ago. block_home_calls already refuses the connection, but
+ * refusing a call is not as tidy as never placing it: the attempt still costs
+ * a name lookup and a socket, and it fills the log with something nobody can
+ * act on.
+ *
+ * This is HLSW's own setting, so it is switched off in HLSW's own settings,
+ * exactly the way the login screen is. Turning it back on inside HLSW lasts
+ * until the next start, because this runs at every start. block_home_calls = 0
+ * leaves it alone. */
+static void turn_off_hlsw_update_check(void)
+{
+    HKEY key;
+    DWORD off = 0;
+
+    if (RegCreateKeyExA(HKEY_CURRENT_USER, "Software\\HLSW\\Settings", 0, NULL, 0,
+                        KEY_SET_VALUE, NULL, &key, NULL) != ERROR_SUCCESS)
+        return;
+    RegSetValueExA(key, "AutoUpdateCheck", 0, REG_DWORD, (const BYTE *)&off, sizeof(off));
+    RegCloseKey(key);
+    dbg_log("HLSW's own update check switched off");
+}
+
 /* True for hlsw.net, hlsw.org and anything underneath them. Matched on the
  * tail, so s9b.hlsw.org is caught without having to know every host name the
  * developers ever used. The dot before the suffix is required, or a domain
@@ -2248,6 +2271,51 @@ static void load_config(HMODULE self)
 
 /* ------------------------------------------------------------------ attach */
 
+/* Set when there is no way left to repeat a query, so that the message about
+ * it can be shown from somewhere it is allowed to be shown from. */
+static volatile LONG g_hooks_failed;
+
+/* Everything that does not have to happen under the loader lock, moved out of
+ * it.
+ *
+ * DllMain runs with that lock held, and what may be done in there is narrow:
+ * no LoadLibrary, and nothing that creates a window or pumps messages, because
+ * a window can send a message to another thread which then wants the loader,
+ * and both sides wait for each other. This library broke that twice. It put up
+ * a message box when the redirection failed, which is exactly the
+ * window-creating case, and it took a Toolhelp snapshot to write the module
+ * list into the log, which walks the very list the lock is there to protect.
+ *
+ * Neither has ever gone wrong here, and that is the point of fixing it anyway:
+ * it works until it meets a machine with something else injected into the same
+ * process, an anti-virus or an overlay, and then it looks like HLSW simply not
+ * starting, with nothing anywhere to find.
+ *
+ * This thread is created as the last thing DllMain does and cannot run before
+ * the loader has finished, because starting a thread goes through the loader
+ * as well and waits for the same lock. So by the time any of this runs, the
+ * lock is gone.
+ *
+ * What stays behind in DllMain stays for a reason. The detours have to be in
+ * place before HLSW runs its first instruction, and they are plain memory
+ * writes, which is allowed. The settings have to be read before it is known
+ * which detours to place at all. The two registry values have to be written
+ * before HLSW reads them, which is moments later. */
+static DWORD WINAPI after_attach(LPVOID unused)
+{
+    (void)unused;
+
+    /* Here rather than in DllMain: it is only ever needed for a message, and
+     * every message is shown from here now. */
+    text_init(g_self, STR_HOOKS_FAILED);
+
+    log_modules();
+
+    if (g_hooks_failed)
+        MessageBoxW(NULL, text(STR_HOOKS_FAILED), L"hlswfix", MB_OK | MB_ICONWARNING);
+    return 0;
+}
+
 BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
 {
     (void)reserved;
@@ -2258,16 +2326,10 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
     DisableThreadLibraryCalls(inst);
     InitializeCriticalSection(&g_lock);
     g_self = (HMODULE)inst;
-    /* Our own copy of the texts, in the language HLSW is set to. Reading a
-     * resource out of an image that is already mapped touches the loader not
-     * at all, which is the same reason load_own_version reads it this way. */
-    text_init((HMODULE)inst, STR_HOOKS_FAILED);
     /* Own version first, so that a title_version line in the file overrides it
      * rather than the other way round. */
     load_own_version(inst);
     load_config(inst);
-
-    log_modules();
 
     /* Redirect the functions themselves. Both the connected and the
      * unconnected pair are taken, because HLSW uses both depending on what it
@@ -2319,6 +2381,7 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
         real_WSAAsyncGetHostByName = detour_api("WSAAsyncGetHostByName",
                                                 (void *)my_WSAAsyncGetHostByName);
         load_home_addresses();
+        turn_off_hlsw_update_check();
     }
 
     if (g_skip_login)
@@ -2381,8 +2444,22 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
      * because every hook checks the function it forwards to; the check that
      * keeps a missing one from being called through is at the call site, not
      * in this condition. */
-    if (!((real_recvfrom && real_sendto) || (real_recv && real_send))) {
-        MessageBoxW(NULL, text(STR_HOOKS_FAILED), L"hlswfix", MB_OK | MB_ICONWARNING);
+    if (!((real_recvfrom && real_sendto) || (real_recv && real_send)))
+        g_hooks_failed = 1;
+
+    /* Last, and deliberately last: everything above had to be done here,
+     * everything in there did not. See after_attach. */
+    {
+        HANDLE thread = CreateThread(NULL, 0, after_attach, NULL, 0, NULL);
+
+        if (thread)
+            CloseHandle(thread);
+        else if (g_hooks_failed)
+            /* Nowhere left to say it from, so say it here after all. Breaking
+             * the rule beats a redirection that silently did not happen. */
+            MessageBoxA(NULL, "hlswfix could not redirect the winsock functions "
+                              "it needs.\r\nHLSW will run, but servers will show "
+                              "as timed out.", "hlswfix", MB_OK | MB_ICONWARNING);
     }
     return TRUE;
 }

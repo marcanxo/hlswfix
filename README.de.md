@@ -17,7 +17,7 @@ und legt Dateien daneben, und mehr fasst er nicht an.
 
 1. Zuerst HLSW installieren. Falls du es nicht hast, siehe
    [HLSW beschaffen](#hlsw-beschaffen) weiter unten.
-2. `hlswfix-1.8.0.0.zip` von der [Releases-Seite][releases] laden. Nicht über den
+2. `hlswfix-1.8.1.0.zip` von der [Releases-Seite][releases] laden. Nicht über den
    grünen **Code**-Knopf: der gibt dir die Quellen ohne die gebauten Dateien.
 3. Irgendwohin entpacken und HLSW schließen, falls es läuft.
 4. Doppelklick auf **`install.cmd`**.
@@ -284,7 +284,7 @@ Alles in `hlswfix.ini` ist optional, die Datei selbst eingeschlossen. Der Fix
 braucht keine Konfiguration. Die Kommentare in der Datei erklären jede
 Einstellung, drei sind es wert, hier wiederholt zu werden.
 
-**`title_version`** ist der Grund, warum in der Titelzeile **HLSW v1.8.0.0**
+**`title_version`** ist der Grund, warum in der Titelzeile **HLSW v1.8.1.0**
 steht. Die letzte Version der Entwickler war 1.4.0.5 aus dem Jahr 2011, und die
 neue Nummer sagt auf einen Blick, dass in diesem HLSW der Fix steckt. Setzen
 musst du sie nicht: ohne die Zeile wird die Version des Fixes selbst angezeigt,
@@ -553,6 +553,43 @@ HLSW speichert die zuletzt aufgelöste unter
 nachschlagen. Danach über einen Lauf gemessen: acht Pakete zurückgehalten,
 keines gesendet, und die Spielserver antworteten genau wie vorher. Setze es in
 `hlswfix.ini` auf `0`, um HLSWs eigenen Verkehr in Ruhe zu lassen.
+
+Auch die eigene Suche nach einem neueren HLSW wird abgeschaltet, und zwar in
+HLSWs eigener Einstellung statt am Socket: `AutoUpdateCheck` unter
+`HKCU\Software\HLSW\Settings`. Einen Anruf nicht zu tätigen ist sauberer, als
+ihn abzuweisen, und am anderen Ende ist seit Jahren nichts mehr. Wer sie in
+HLSW wieder einschaltet, hat sie bis zum nächsten Start, denn das hier läuft
+bei jedem Start.
+
+## Was DllMain tut, und was es nicht mehr tut
+
+Die DllMain einer Bibliothek wird mit gehaltener Loader-Sperre aufgerufen, und
+was dort erlaubt ist, ist eng: kein `LoadLibrary`, und nichts, was ein Fenster
+erzeugt oder Nachrichten pumpt. Ein Fenster kann eine Nachricht an einen Thread
+schicken, der dann den Loader will, und beide Seiten warten aufeinander.
+
+Genau das haben wir zweimal getan. Bei fehlgeschlagener Umleitung erschien eine
+Meldungsbox, also exakt der fensteröffnende Fall, und für die Modulliste im Log
+lief eine Toolhelp-Abfrage, die durch genau die Liste geht, die die Sperre
+schützt. Schiefgegangen ist davon hier über Wochen nie etwas, und das ist der
+Grund, es trotzdem zu ändern statt es zu lassen: es funktioniert, bis es auf
+eine Maschine trifft, in deren Prozess noch etwas anderes injiziert ist, ein
+Virenscanner oder ein Spiel-Overlay, und dann sieht es aus, als würde HLSW
+einfach nicht starten, ohne dass irgendwo etwas zu finden wäre.
+
+Beides läuft jetzt auf einem Thread, den DllMain als Letztes erzeugt. Früher
+kann der nicht laufen, denn einen Thread zu starten geht ebenfalls durch den
+Loader und wartet auf dieselbe Sperre. Im Log sieht man es: alles bis zum
+letzten Detour trägt eine Thread-Nummer, die Modulliste eine andere.
+
+Was dort bleibt, bleibt aus gutem Grund. Die Detours müssen sitzen, bevor HLSW
+seine erste Anweisung ausführt, und sie sind reine Speicherschreibvorgänge in
+ein bereits abgebildetes Image, was erlaubt ist. Die Einstellungen müssen
+gelesen sein, bevor überhaupt feststeht, welche Detours zu setzen sind. Und die
+beiden Registry-Werte müssen geschrieben sein, bevor HLSW sie Augenblicke
+später liest. Das Lesen von `hlswfix.ini` läuft weiterhin über die
+C-Laufzeitbibliothek, die statisch gebunden und vor dem Aufruf von DllMain
+initialisiert ist, fasst also nichts an, was dem Loader gehört.
 
 ## Die Login-Maske
 
